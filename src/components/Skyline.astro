@@ -1,59 +1,194 @@
 ---
-// Stylized Amman at dawn: two hill ranges covered in stone-box houses, the Citadel's Temple of
-// Hercules columns, the Jordan Gate towers and the Raghadan flagpole. Generated deterministically
-// at build time, so the SVG is the same on every build.
+// Amman at dawn, back to front: hazy far ranges with a rim of first light; a mist band; the
+// modern city on the middle hills (the Abdali towers, the Jordan Gate twin towers, King Abdullah I
+// Mosque with its blue dome, and the Raghadan flagpole flying the Jordanian flag); Citadel hill
+// with the Temple of Hercules columns and the Umayyad Palace dome;
+// and the nearest hills covered in stone houses with water tanks on their roofs and window lights
+// that go out as dawn comes.
+//
+// Generated deterministically at build time. The sky's horizon sits at HORIZON_Y in this
+// viewBox, just under the far ranges' lowest crest, so the canvas ground is always tucked behind
+// them. Sky.astro reads it from data-horizon and maps it to the screen.
 const W = 1440;
-const H = 220;
+const H = 360;
+const HORIZON_Y = 180;
 
 let seed = 31;
 const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const r1 = (n: number) => n.toFixed(1);
 
-const backY = (x: number) => 128 - 14 * Math.sin(x / 210) - 8 * Math.sin(x / 83 + 1.3);
-const frontY = (x: number) => 172 - 9 * Math.sin(x / 170 + 2) - 5 * Math.sin(x / 61);
+const far = (x: number) => 156 - 10 * Math.sin(x / 260 + 0.6) - 6 * Math.sin(x / 97 + 2.1);
+const mid = (x: number) => 222 - 12 * Math.sin(x / 210 + 1.1) - 6 * Math.sin(x / 71);
+// Citadel hill (Jabal al-Qal'a): a flat-topped plateau with steep sides around x = 300, sinking
+// behind the nearest hills on both sides
+const plateau = (x: number) => {
+  const t = Math.min(1, Math.max(0, (Math.abs(x - 300) - 110) / 80));
+  return 1 - t * t * (3 - 2 * t);
+};
+const citadel = (x: number) => 306 - 102 * plateau(x) - 2 * Math.sin(x / 23);
+const front = (x: number) => 292 - 10 * Math.sin(x / 170 + 2) - 5 * Math.sin(x / 61);
 
-const hill = (f: (x: number) => number) => {
-  let d = `M0 ${H} L0 ${f(0).toFixed(1)}`;
-  for (let x = 20; x <= W; x += 20) d += ` L${x} ${f(x).toFixed(1)}`;
-  return `${d} L${W} ${H} Z`;
+const ridge = (f: (x: number) => number, x0 = 0, x1 = W) => {
+  let d = `M${x0} ${H} L${x0} ${r1(f(x0))}`;
+  for (let x = x0 + 12; x <= x1; x += 12) d += ` L${x} ${r1(f(x))}`;
+  return `${d} L${x1} ${H} Z`;
+};
+const crest = (f: (x: number) => number) => {
+  let d = `M0 ${r1(f(0))}`;
+  for (let x = 12; x <= W; x += 12) d += ` L${x} ${r1(f(x))}`;
+  return d;
 };
 
-function houses(f: (x: number) => number, minH: number, maxH: number, gap: number) {
-  const out: { x: number; y: number; w: number; h: number; lit: { x: number; y: number }[] }[] = [];
+interface House { x: number; y: number; w: number; h: number; tank?: { x: number; y: number }; light?: { x: number; y: number; out: number } }
+function houses(f: (x: number) => number, minH: number, maxH: number, gap: number, lit: number, skip?: (x: number) => boolean) {
+  const out: House[] = [];
   for (let x = 0; x < W; ) {
-    const w = 10 + rand() * 18;
+    const w = 10 + rand() * 20;
+    if (skip?.(x + w / 2)) {
+      x += w;
+      continue;
+    }
     const h = minH + rand() * (maxH - minH);
-    const base = f(x + w / 2) + 2;
-    const lit = [];
-    if (rand() < 0.35) lit.push({ x: x + 3 + rand() * (w - 7), y: base - h + 3 + rand() * (h - 7) });
-    out.push({ x, y: base - h, w, h, lit });
+    const base = f(x + w / 2) + 3;
+    const house: House = { x, y: base - h, w, h };
+    // Rooftop water tanks: the most Amman detail there is
+    if (rand() < 0.35) house.tank = { x: x + 2 + rand() * (w - 7), y: base - h - 3 };
+    if (rand() < lit) house.light = { x: x + 3 + rand() * (w - 7), y: base - h + 3 + rand() * (h - 8), out: Math.round(rand() * 100) };
+    out.push(house);
     x += w + rand() * gap;
   }
   return out;
 }
 
-const back = houses(backY, 8, 20, 10);
-const front = houses(frontY, 10, 26, 4);
-const citadelX = 330;
-const gateX = 770;
-const flagX = 1110;
+const mids = houses(mid, 6, 16, 14, 0.18, (x) => (x > 540 && x < 680) || (x > 820 && x < 910) || (x > 970 && x < 1130));
+const fronts = houses(front, 12, 30, 3, 0.3, (x) => x < 440 && x > 150);
+const citadelHouses = houses(citadel, 8, 18, 6, 0.2, (x) => citadel(x) > front(x) - 12 || (x > 238 && x < 392));
+
+// Modern towers on the middle hills
+const abdali = [
+  { x: 985, w: 34, h: 118 },
+  { x: 1024, w: 26, h: 150, slant: true },
+  { x: 1056, w: 38, h: 104 },
+  { x: 1098, w: 24, h: 128 },
+];
+const gate = [
+  { x: 836, w: 22, h: 168 },
+  { x: 872, w: 22, h: 152 },
+];
+
+// King Abdullah I Mosque
+const mosqueX = 610;
+const mosqueBase = mid(mosqueX) - 2;
+
+// Raghadan flagpole and a waving Jordanian flag (black, white and green, a red chevron and a white star)
+const poleX = 1300;
+const poleTop = mid(poleX) - 170;
+const flagW = 72;
+const stripe = 15;
+const wave = (u: number) => 4 * Math.sin(u * Math.PI * 1.6);
+const band = (i: number) => {
+  let d = '';
+  for (let k = 0; k <= 8; k++) {
+    const u = k / 8;
+    d += `${k ? 'L' : 'M'}${r1(poleX + u * flagW)} ${r1(poleTop + i * stripe + wave(u))} `;
+  }
+  for (let k = 8; k >= 0; k--) {
+    const u = k / 8;
+    d += `L${r1(poleX + u * flagW)} ${r1(poleTop + (i + 1) * stripe + wave(u))} `;
+  }
+  return d + 'Z';
+};
+const chevron = `M${poleX} ${r1(poleTop + wave(0))} L${r1(poleX + flagW * 0.48)} ${r1(poleTop + 1.5 * stripe + wave(0.48))} L${poleX} ${r1(poleTop + 3 * stripe + wave(0))} Z`;
+
+// Citadel: the Temple of Hercules (standing columns with a fragment of architrave) and the
+// Umayyad Palace's domed hall
+const templeX = 262;
+const templeBase = citadel(templeX + 20) - 1;
+const palaceX = 352;
+const palaceBase = citadel(palaceX) - 1;
 ---
 
-<svg class="skyline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
-  <g class="skyline-back">
-    <path d={hill(backY)}></path>
-    {back.map((b) => <rect x={b.x.toFixed(1)} y={b.y.toFixed(1)} width={b.w.toFixed(1)} height={b.h.toFixed(1)} />)}
-    {[0, 1, 2, 3, 4, 5].map((i) => <rect x={citadelX + i * 11} y={backY(citadelX) - 46} width="5" height="42" />)}
-    <rect x={citadelX - 4} y={backY(citadelX) - 50} width="68" height="5"></rect>
-    <rect x={citadelX - 8} y={backY(citadelX) - 5} width="76" height="8"></rect>
-    <rect x={gateX} y={backY(gateX) - 118} width="20" height="120"></rect>
-    <rect x={gateX + 34} y={backY(gateX + 34) - 104} width="20" height="106"></rect>
-    <rect x={flagX} y={backY(flagX) - 140} width="2.5" height="142"></rect>
-    <path class="flag" d={`M${flagX + 2.5} ${backY(flagX) - 138} h46 v28 h-46 z`}></path>
-    {back.flatMap((b) => b.lit).map((l) => <rect class="lit" x={l.x.toFixed(1)} y={l.y.toFixed(1)} width="2.4" height="3" />)}
+<svg class="skyline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" data-horizon={HORIZON_Y} aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="amman-far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2d4c"></stop>
+      <stop offset="0.6" stop-color="#211c36"></stop>
+    </linearGradient>
+    <linearGradient id="amman-mist" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d8a9b0" stop-opacity="0"></stop>
+      <stop offset="0.5" stop-color="#d8a9b0" stop-opacity="0.16"></stop>
+      <stop offset="1" stop-color="#d8a9b0" stop-opacity="0"></stop>
+    </linearGradient>
+    <radialGradient id="amman-dome" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#3f5f8f"></stop>
+      <stop offset="1" stop-color="#1c2b4a"></stop>
+    </radialGradient>
+  </defs>
+
+  <!-- Far ranges, hazy with distance, with a rim of first light on the crest -->
+  <path class="amman-far" d={ridge(far)} fill="url(#amman-far)"></path>
+  <path class="amman-rim" d={crest(far)}></path>
+  <rect x="0" y="168" width={W} height="60" fill="url(#amman-mist)"></rect>
+
+  <!-- Middle hills and the modern city -->
+  <g class="amman-mid">
+    <path d={ridge(mid)}></path>
+    {mids.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
+    {abdali.map((t) => t.slant
+      ? <path d={`M${t.x} ${r1(mid(t.x) + 2)} V${r1(mid(t.x) - t.h + 14)} L${t.x + t.w} ${r1(mid(t.x) - t.h)} V${r1(mid(t.x) + 2)} Z`} />
+      : <rect x={t.x} y={r1(mid(t.x) - t.h)} width={t.w} height={t.h + 2} />)}
+    {gate.map((t) => <rect x={t.x} y={r1(mid(t.x) - t.h)} width={t.w} height={t.h + 2} />)}
+    <!-- King Abdullah I Mosque: drum, blue dome and two minarets -->
+    <rect x={mosqueX - 40} y={r1(mosqueBase - 22)} width="80" height="24"></rect>
+    <rect x={mosqueX - 26} y={r1(mosqueBase - 34)} width="52" height="14"></rect>
+    {[mosqueX - 62, mosqueX + 56].map((mx) => (
+      <g>
+        <rect x={mx} y={r1(mosqueBase - 104)} width="6" height="106"></rect>
+        <rect x={mx - 2} y={r1(mosqueBase - 84)} width="10" height="4"></rect>
+        <path d={`M${mx - 1} ${r1(mosqueBase - 104)} L${mx + 3} ${r1(mosqueBase - 120)} L${mx + 7} ${r1(mosqueBase - 104)} Z`}></path>
+      </g>
+    ))}
+    {/* Raghadan flagpole */}
+    <rect x={poleX - 1.5} y={r1(poleTop)} width="3" height={r1(mid(poleX) - poleTop + 2)}></rect>
   </g>
-  <g class="skyline-front">
-    <path d={hill(frontY)}></path>
-    {front.map((b) => <rect x={b.x.toFixed(1)} y={b.y.toFixed(1)} width={b.w.toFixed(1)} height={b.h.toFixed(1)} />)}
-    {front.flatMap((b) => b.lit).map((l) => <rect class="lit" x={l.x.toFixed(1)} y={l.y.toFixed(1)} width="2.4" height="3" />)}
+  <path class="amman-dome" d={`M${mosqueX - 26} ${r1(mosqueBase - 33)} A26 26 0 0 1 ${mosqueX + 26} ${r1(mosqueBase - 33)} Z`} fill="url(#amman-dome)"></path>
+  <g class="amman-flag">
+    <path d={band(0)} fill="#16161a"></path>
+    <path d={band(1)} fill="#e9e5dc"></path>
+    <path d={band(2)} fill="#1f7a43"></path>
+    <path d={chevron} fill="#c3202f"></path>
+    <circle cx={r1(poleX + flagW * 0.17)} cy={r1(poleTop + 1.5 * stripe + wave(0.17))} r="2" fill="#e9e5dc"></circle>
   </g>
+  {[...abdali, ...gate].flatMap((t, ti) =>
+    Array.from({ length: 6 }, (_, k) => {
+      const lx = t.x + 5 + ((k * 7 + ti * 3) % Math.max(1, t.w - 9));
+      const ly = mid(t.x) - t.h + 18 + k * (t.h / 7);
+      const out = (k * 13 + ti * 7) % 90;
+      return <rect class:list={['lit', { fades: out < 60 }]} x={r1(lx)} y={r1(ly)} width="2.4" height="3" style={`--out:${out}%`} />;
+    }),
+  )}
+  <rect x="0" y="232" width={W} height="44" fill="url(#amman-mist)"></rect>
+
+  <!-- Citadel hill: Temple of Hercules, the Umayyad Palace dome, houses on the slopes -->
+  <g class="amman-citadel">
+    <path d={ridge(citadel)}></path>
+    {citadelHouses.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
+    <rect x={templeX - 8} y={r1(templeBase - 6)} width="70" height="8"></rect>
+    {[0, 14, 28].map((dx) => <rect x={templeX + dx} y={r1(templeBase - 62)} width="8" height="58" />)}
+    <rect x={templeX - 3} y={r1(templeBase - 70)} width="45" height="8"></rect>
+    <rect x={templeX + 48} y={r1(templeBase - 44)} width="8" height="40"></rect>
+    <rect x={palaceX - 18} y={r1(palaceBase - 20)} width="36" height="21"></rect>
+    <path d={`M${palaceX - 15} ${r1(palaceBase - 19)} A15 15 0 0 1 ${palaceX + 15} ${r1(palaceBase - 19)} Z`}></path>
+  </g>
+
+  <!-- Nearest hills: stone houses, rooftop water tanks, window lights -->
+  <g class="amman-front">
+    <path d={ridge(front)}></path>
+    {fronts.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
+    {[...fronts, ...mids, ...citadelHouses].filter((b) => b.tank).map((b) => <rect x={r1(b.tank!.x)} y={r1(b.tank!.y)} width="5" height="3" />)}
+  </g>
+  {/* About two thirds of the lights go out, one by one, as dawn comes; the rest stay on */}
+  {[...fronts, ...mids, ...citadelHouses].filter((b) => b.light).map((b) => (
+    <rect class:list={['lit', { fades: b.light!.out < 66 }]} x={r1(b.light!.x)} y={r1(b.light!.y)} width="2.4" height="3" style={`--out:${b.light!.out}%`} />
+  ))}
 </svg>

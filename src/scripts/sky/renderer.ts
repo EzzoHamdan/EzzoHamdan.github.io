@@ -40,9 +40,10 @@ export type SkyMessage =
       calm?: boolean;
     }
   | { type: 'resize'; width: number; height: number; dpr: number }
-  | { type: 'scroll'; progress: number }
-  /** Where each section sits along the scroll (0..1), and the skyline's horizon line at the end. */
-  | { type: 'scenes'; anchors: { id: string; at: number }[]; horizonY: number }
+  /** Scroll position (0..1) and where the skyline's far hills are on screen right now. */
+  | { type: 'scroll'; progress: number; horizonY: number }
+  /** Where each section's shot begins, in pixels of scroll, and the total scroll length. */
+  | { type: 'scenes'; anchors: { id: string; at: number }[]; max: number; vh: number }
   | { type: 'motion'; reduced: boolean }
   | { type: 'visible'; visible: boolean }
   | { type: 'pointer'; x: number; y: number }
@@ -75,6 +76,10 @@ const PLANET_COLORS: Record<(typeof PLANETS)[number], string> = {
 };
 const GROUND = '#0b1024'; // matches the far hills of the footer skyline
 const MINUTE = 60_000;
+/** Faintest star drawn in the overhead view; zooming in reveals fainter ones, like a telescope. */
+const BASE_LIMIT = 5;
+/** How far a camera move pushes in (degrees of field of view) halfway between two shots. */
+const PUSH_IN = 9;
 // How far the dome turns over the whole page: six hours of sky, 90° around the pole
 const DOME_SPAN = 6 * 3_600_000;
 
@@ -84,11 +89,12 @@ const DOME_SPAN = 6 * 3_600_000;
  * the skyline".
  */
 const SHOTS: Record<string, Shot> = {
+  // Each section zooms a little deeper into the sky than the one before
   hero: { az: 180, alt: 90, fov: 90, lens: 1 }, // straight up: the whole dome, north at the top
-  about: { az: 180, alt: 72, fov: 84, lens: 1 }, // tilting toward the south
-  experience: { az: 200, alt: 55, fov: 78, lens: 1 }, // the southern sky
-  projects: { az: 105, alt: 50, fov: 74, lens: 1 }, // east, where new stars rise
-  education: { az: 0, alt: 45, fov: 74, lens: 1 }, // north, toward Polaris, the guiding star
+  about: { az: 180, alt: 72, fov: 80, lens: 1 }, // tilting toward the south
+  experience: { az: 200, alt: 55, fov: 70, lens: 1 }, // the southern sky
+  projects: { az: 105, alt: 45, fov: 62, lens: 1 }, // east, where new stars rise
+  education: { az: 0, alt: 35, fov: 56, lens: 1 }, // north, toward Polaris, the guiding star
   // The eastern horizon at dawn over Amman, through a near-rectilinear lens so it lies flat
   contact: { az: 95, alt: NaN, fov: 48, lens: 0.12 },
 };
@@ -174,6 +180,8 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   let target = 0, progress = 0;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12), startedAt = 0;
   let anchors: { id: string; at: number }[] = [];
+  let scrollMax = 1;
+  let vh = 1;
   let horizonY = NaN;
   let shot: Shot = SHOTS.hero;
   let view: View = camera(1, 1, 180, 90, 90, 1);
@@ -216,7 +224,9 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     const s = SHOTS[id] ?? SHOTS.hero;
     let shot: Shot;
     if (Number.isNaN(s.alt)) {
-      // Tilt down just enough that the real horizon falls on the skyline's far hills
+      // Tilt down just enough that the real horizon falls on the skyline's far hills wherever
+      // they are on screen right now, so the sky's horizon and the city move as one. Recomputed
+      // every frame, never cached.
       const y = Number.isNaN(horizonY) ? h * 0.75 : horizonY;
       let lo = 0;
       let hi = 60;
@@ -226,7 +236,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
         if (ahead.y < y) lo = mid;
         else hi = mid;
       }
-      shot = { ...s, alt: (lo + hi) / 2 };
+      return { ...s, alt: (lo + hi) / 2 };
     } else {
       // Everywhere else, tilt up until no part of the horizon shows, not even where it curves
       // up toward the sides, so no ground appears behind reading text
@@ -238,22 +248,42 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     return shot;
   }
 
-  /** The camera for a scroll position: hold on each section's shot, glide between them. */
+  /**
+   * The camera for a scroll position. Every move between two shots takes the same scroll
+   * distance (about one screen, centered on where the next section begins) so no move is faster
+   * than another; the rest of each section holds still on its shot.
+   */
   function shotAt(p: number): Shot {
-    if (reduced || calm || anchors.length === 0) return resolve('hero');
+    if (reduced || calm || anchors.length === 0) {
+      section = 'hero';
+      return resolve('hero');
+    }
+    const y = p * scrollMax;
     let i = 0;
-    while (i < anchors.length - 1 && anchors[i + 1].at <= p) i++;
-    const a = anchors[i];
-    const b = anchors[Math.min(i + 1, anchors.length - 1)];
-    const A = resolve(a.id);
-    section = a.id;
-    if (a === b || p <= a.at) return A;
-    const B = resolve(b.id);
-    const t = smooth(0.18, 0.82, (p - a.at) / (b.at - a.at));
-    if (t > 0.5) section = b.id;
+    let window = 0;
+    for (let j = 1; j < anchors.length; j++) {
+      const gapBefore = anchors[j].at - anchors[j - 1].at;
+      const gapAfter = j + 1 < anchors.length ? anchors[j + 1].at - anchors[j].at : Infinity;
+      const half = Math.max(1, Math.min(0.55 * vh, 0.45 * gapBefore, 0.45 * gapAfter));
+      if (y >= anchors[j].at - half) {
+        i = j;
+        window = half;
+      }
+    }
+    if (i === 0) {
+      section = anchors[0].id;
+      return resolve(anchors[0].id);
+    }
+    const A = resolve(anchors[i - 1].id);
+    const B = resolve(anchors[i].id);
+    const t = smooth(0, 1, (y - (anchors[i].at - window)) / (2 * window));
+    section = t > 0.5 ? anchors[i].id : anchors[i - 1].id;
+    if (t >= 1) return B;
     const dAz = ((B.az - A.az + 540) % 360) - 180;
-    const mix = (x: number, y: number) => x + (y - x) * t;
-    return { az: A.az + dAz * t, alt: mix(A.alt, B.alt), fov: mix(A.fov, B.fov), lens: mix(A.lens, B.lens) };
+    const mix = (x: number, z: number) => x + (z - x) * t;
+    // A gentle push-in through the middle of the move, as if flying toward the next view
+    const push = PUSH_IN * Math.sin(Math.PI * t);
+    return { az: A.az + dAz * t, alt: mix(A.alt, B.alt), fov: mix(A.fov, B.fov) - push, lens: mix(A.lens, B.lens) };
   }
 
   // Everything moves together: stars, named stars, planets and the Milky Way
@@ -266,16 +296,22 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   }
 
   function drawStars(time: number, dim: number) {
+    // Zooming in shows fainter stars, as through a telescope: one magnitude per doubling
+    const zoom = view.f / (Math.hypot(w, h) / 2);
+    const limit = BASE_LIMIT + Math.max(0, Math.log2(zoom));
     for (let i = 0; i < stars.length; i++) {
+      const mag = starMag[i];
+      if (mag > limit) break; // the catalog is sorted brightest first
       const u = stars.u[i];
       if (u < 0) continue;
       const x = stars.x[i];
       const y = stars.y[i];
       if (x < -20 || y < -20 || x > w + 20 || y > h + 20) continue;
-      const mag = starMag[i];
       const twinkle = reduced || mag < 1 ? 1 : 0.78 + 0.22 * Math.sin(time * (1.2 + (i % 7) * 0.25) + starPhase[i]);
       // Fainter near the horizon, as through more atmosphere
-      const alpha = clamp(1.15 - 0.13 * mag, 0.3, 1) * smooth(0, 0.18, u) * twinkle * dim;
+      // Stars near the limit fade in rather than pop as the camera zooms
+      const reveal = clamp((limit - mag) / 0.6);
+      const alpha = clamp(1.15 - 0.13 * mag, 0.3, 1) * smooth(0, 0.18, u) * twinkle * dim * reveal;
       if (alpha <= 0.01) continue;
       const r = Math.max(0.6, 2.3 - 0.34 * mag);
       ctx.globalAlpha = alpha;
@@ -535,13 +571,15 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
           break;
         case 'scenes':
           anchors = msg.anchors;
-          horizonY = msg.horizonY;
+          scrollMax = Math.max(1, msg.max);
+          vh = msg.vh;
           resolved = {};
           viewKey = '';
           if (reduced || !visible) render(performance.now());
           return;
         case 'scroll':
           target = clamp(msg.progress);
+          horizonY = msg.horizonY;
           if (reduced || !visible) {
             progress = target;
             render(performance.now());

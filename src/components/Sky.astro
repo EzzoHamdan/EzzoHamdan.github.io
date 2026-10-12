@@ -111,11 +111,22 @@
 
     // Scrolling never moves the stars; it sets how dim the sky is and how many shooting stars fall
     let ticking = false;
+    // Where the skyline's far hills sit on screen now; the sky's horizon follows them exactly
+    const skyline = document.querySelector<SVGSVGElement>('.skyline');
+    const horizonNow = () => {
+      if (!skyline) return NaN;
+      // The skyline is scaled to cover and anchored at its bottom (xMidYMax slice), so map its
+      // viewBox horizon line to the screen with the actual scale, not a fraction of its height
+      const r = skyline.getBoundingClientRect();
+      const box = skyline.viewBox.baseVal;
+      const scale = Math.max(r.width / box.width, r.height / box.height);
+      return r.bottom - (box.height - Number(skyline.dataset.horizon)) * scale;
+    };
     const onScroll = () => {
       ticking = false;
       const max = document.documentElement.scrollHeight - innerHeight;
       const progress = max > 0 ? Math.min(1, scrollY / max) : 0;
-      post({ type: 'scroll', progress });
+      post({ type: 'scroll', progress, horizonY: horizonNow() });
       // The hero has its own caption; the view caption takes over once the journey starts
       viewCaption.hidden = calm || progress < 0.06 || !viewCaption.textContent;
     };
@@ -130,19 +141,18 @@
     );
     onScroll();
 
-    // Tell the sky where each section sits along the scroll, so the camera can hold a shot per
-    // section, and where the skyline's far hills will be on screen at the very end
+    // Tell the sky where each section begins along the scroll (in pixels), so the camera can hold
+    // a shot per section and move between them at an even pace
     const sendScenes = () => {
       const max = document.documentElement.scrollHeight - innerHeight;
       if (max <= 0) return;
       const anchors = [...document.querySelectorAll<HTMLElement>('main > section[id]')].map((el) => {
         // A section's shot is reached as its heading comes into view, 30% down the screen
         const top = el.getBoundingClientRect().top + scrollY;
-        return { id: el.id, at: Math.min(1, Math.max(0, (top - innerHeight * 0.3) / max)) };
+        return { id: el.id, at: Math.min(max, Math.max(0, top - innerHeight * 0.3)) };
       });
-      const skyline = document.querySelector('.skyline')?.getBoundingClientRect();
-      const horizonY = skyline ? skyline.top + scrollY + skyline.height * 0.64 - max : NaN;
-      post({ type: 'scenes', anchors, horizonY });
+      post({ type: 'scenes', anchors, max, vh: innerHeight });
+      onScroll();
     };
     sendScenes();
     document.fonts.ready.then(sendScenes);

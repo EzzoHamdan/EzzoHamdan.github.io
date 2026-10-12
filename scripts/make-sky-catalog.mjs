@@ -5,7 +5,7 @@
 //   curl -LO https://cdn.jsdelivr.net/gh/ofrohn/d3-celestial@master/data/starnames.json
 //   node scripts/make-sky-catalog.mjs <dir with those three files>
 //
-// Output: stars to magnitude 5 as [ra°, dec°, mag, colorIndex], and the Arabic-named stars from
+// Output: stars to magnitude 6 (everything visible to the naked eye) as [ra°, dec°, mag, colorIndex], and the Arabic-named stars from
 // src/data/sky-names.ts with their positions. Fails if a named star is missing from the catalog.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ const dir = process.argv[2];
 if (!dir) throw new Error('usage: node scripts/make-sky-catalog.mjs <data dir>');
 const read = (f) => JSON.parse(readFileSync(join(dir, f), 'utf8'));
 
-const MAX_MAG = 5;
+const MAX_MAG = 6;
 const ra = (lon) => +((lon + 360) % 360).toFixed(2);
 const r2 = (n) => +n.toFixed(2);
 // B−V color index → 0 blue-white, 1 white, 2 yellow-white, 3 orange
@@ -31,7 +31,9 @@ const stars = catalog
 
 // Names live in TypeScript; read the `en` values with a regex instead of importing TS here
 const namesSource = readFileSync(new URL('../src/data/sky-names.ts', import.meta.url), 'utf8');
-const wanted = [...namesSource.matchAll(/\{ en: '([^']+)', origin:/g)].map((m) => m[1]);
+// Only the starNames list (the same file also holds planet names in the same shape)
+const starBlock = namesSource.slice(namesSource.indexOf('export const starNames'), namesSource.indexOf('];'));
+const wanted = [...starBlock.matchAll(/\{ en: '([^']+)', origin:/g)].map((m) => m[1]);
 const names = read('starnames.json');
 const byId = new Map(catalog.map((f) => [String(f.id), f]));
 const named = wanted.map((en) => {
