@@ -78,10 +78,10 @@ nothing deploys from a feature branch.
 | `llms.txt` / `llms-full.txt` text | [`src/lib/llms.ts`](src/lib/llms.ts) |
 | Profile page (used by both languages) | [`src/components/ProfilePage.astro`](src/components/ProfilePage.astro) |
 | `<head>`: meta, Open Graph, hreflang, fonts | [`src/layouts/Base.astro`](src/layouts/Base.astro) |
-| Sky: page side (scroll, hero caption, star names) | [`src/components/Sky.astro`](src/components/Sky.astro) |
+| Sky: page side (scroll, section anchors, captions, star names, wishes) | [`src/components/Sky.astro`](src/components/Sky.astro) |
 | Sky: atmosphere colors, drawing, twinkle, scroll dimming, shooting-star rate, wishes | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
 | Sky: Amman, sidereal time, Sun, planets, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
-| Sky: catalog arrays and the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
+| Sky: catalog arrays, the camera and its lens, the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
 | Sky: shooting stars (one shared direction, tapered trails) | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
@@ -94,22 +94,37 @@ nothing deploys from a feature branch.
 
 ## 3. How the sky works
 
-The background is the real sky over Amman as a dome: stars to magnitude 5, the naked-eye
-planets and the Milky Way, positioned for right now (or 21:00 tonight if it is daytime in Amman)
-at the top of the page. Stars twinkle; planets shine steadily, as they do in the real sky.
-**Scrolling turns the dome:** the whole page spans six hours of sky rotation around Polaris
-(90°), eased so it glides. It never leaves trails. Scroll also sets the atmosphere color, how
-bright the sky is, and how many shooting stars fall. Clicking empty sky makes a wish: a shooting
-star launches from that point.
+The page is a journey through the real sky over Amman, seen as a dome. The sky holds stars to
+magnitude 5, the naked-eye planets and the Milky Way, positioned for right now (or 21:00 tonight
+if it is daytime in Amman). Stars twinkle; planets shine steadily, as in the real sky. Scrolling
+moves two things:
+
+- **Time:** the whole page spans six hours of sky rotation around Polaris (90°).
+- **The camera:** each section is a *shot*. The camera holds while you read a section and
+  glides to the next shot between sections.
+
+Everything is eased, and nothing ever leaves trails. Scroll also sets the atmosphere color, the
+sky's brightness and the shooting-star rate. Clicking empty sky makes a wish.
+
+| Section | Shot (`renderer.ts::SHOTS`) | Caption |
+| --- | --- | --- |
+| `hero` | Straight up, the whole dome (lens 1, stereographic) | The hero caption: "The sky over Amman right now, 21:18" |
+| `about` | Tilted toward the south | Overhead or south: the nearest named star |
+| `experience` | The southern sky | "Looking south: …" |
+| `projects` | East, where new stars rise | The brightest planet in view, if any |
+| `education` | North, toward Polaris | "Looking north: Polaris" |
+| `contact` | Down to the eastern horizon at dawn (lens 0.12, near-rectilinear) | "Looking east, toward dawn over Amman" |
 
 ```text
-night() ──► moment (now, or 21:00 tonight) ─┐
-                                              ├─► moment + progress × 6 h ──► sidereal time ──► PointSet.project
-scroll position 0..1 ──(Sky.astro)──► worker: eased progress (time constant ≈ 0.22 s)     stars, planets, Milky Way turn together
-                                                             ├─► atmosphere color (dusk → midnight → dawn)
-                                                             ├─► sky brightness  (dims behind reading, fades at dawn)
-                                                             └─► shooting-star rate (rare at top → many at the end)
-click on empty sky ────(Sky.astro)──► worker: meteors.launch(x, y)
+Sky.astro ── scroll 0..1 ──────────────► worker: eased progress (time constant ≈ 0.22 s)
+          └─ "scenes": section anchors      │
+             + skyline horizon y at end     ├─► time = now + progress × 6 h ──► sidereal time ─┐
+                                            ├─► shot = SHOTS[section], gliding between ─► camera()┤
+                                            │                                                     ▼
+                                            │              PointSet.project: stars, planets, Milky Way
+                                            ├─► atmosphere color · sky brightness · shooting-star rate
+worker ── "view" (what is in the center), "hover" (star or planet name) ──► captions on the page
+click on empty sky ─► worker: meteors.launch(x, y)
 ```
 
 #### 3. (rendered)
@@ -117,39 +132,38 @@ click on empty sky ────(Sky.astro)──► worker: meteors.launch(x, y)
 ```mermaid
 %%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
 flowchart LR
-  night[night] --> lst[sidereal time] --> project[PointSet.project] --> sky[(stars, planets, Milky Way)]
   scroll([scroll]) --> progress[eased progress]
-  progress -- "× 6 h" --> lst
-  progress --> air[atmosphere color]
-  progress --> dim[sky brightness]
+  scenes([section anchors]) --> shot[shotAt]
+  progress --> shot --> cam[camera az, alt, fov, lens]
+  progress -- "× 6 h" --> lst[sidereal time]
+  cam --> project[PointSet.project]
+  lst --> project --> sky[(stars, planets, Milky Way)]
+  progress --> air[atmosphere color, brightness, shooting-star rate]
+  sky -. "view, hover" .-> captions([captions on the page])
   click([click on empty sky]) --> wish[meteors.launch]
-  progress --> rate[shooting-star rate]
-  dim --> sky
-  rate --> meteors[createMeteors]
 ```
 
-Read it as: scroll moves the sky only through time, so the dome turns the way the real sky does
-around Polaris. Nothing draws trails or streaks from that motion; see §7 for why.
+Read it as: scroll moves the sky only through time and the camera. The dome turns, and the
+camera looks somewhere new for each section. No text is ever drawn on the canvas; every caption
+is DOM text in `Sky.astro`.
 
-> **Guaranteed:** the top of the page is the real sky right now; no trails are ever drawn from
-> the rotation.
+> **Guaranteed:** no trails are ever drawn. In reading shots no ground shows (`resolve` tilts the
+> camera up until the whole horizon is off screen); only the contact shot shows the horizon.
 > **Prohibited:** long-exposure trails or anything else that accumulates behind text (§7).
-> **Reduced motion:** a still sky (no rotation, twinkle, shooting stars or wishes). The atmosphere
-> color still follows scroll, since it is color, not motion.
-> **Calm** (article pages, `<Base calmSky>`): a still sky in a fixed midnight color, half
+> **Reduced motion:** a still overhead sky (no rotation, camera moves, twinkle, shooting stars or
+> wishes). The atmosphere color still follows scroll, since it is color, not motion.
+> **Calm** (article pages, `<Base calmSky>`): a still overhead sky in a fixed midnight color, half
 > brightness, rare shooting stars and no wishes.
 
-| Where you are | What the sky does |
-| --- | --- |
-| Top of the page | Dusk: a violet afterglow low on the screen; the sky as it is now; full brightness; a shooting star every few seconds |
-| Reading sections | Deep midnight, about 30% dimmer behind text; the dome turns as you scroll |
-| Approaching the end | Pre-dawn violet; shooting stars build gently, plus a fireball every 7–12 s past 70% |
-| Bottom (contact) | Rose-amber dawn; the sky six hours on; stars fade while a few long shooting stars fall, ending above the Amman skyline |
+**Text on the dome:** content blocks curve away and fade at the top and bottom of the screen and
+are flat through the middle, where they are read (`global.css`, `dome-curve`, CSS scroll-driven,
+written in longhand like the other scroll-driven rules).
 
-**Tunables** (`src/scripts/sky/renderer.ts` unless noted): the atmosphere colors are the
-`ATMOSPHERE` table; brightness is the `dim` line in `render`; the rotation span is `DOME_SPAN` and its glide is the `4.5` in the progress easing; the
-shooting-star rate is the `rate` line (`0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5`); meteor
-lifetime and speed are in `meteors.ts::spawn`, and the shared direction is `DX`/`DY`.
+**Tunables** (`src/scripts/sky/renderer.ts` unless noted): shots are the `SHOTS` table; the
+atmosphere colors are the `ATMOSPHERE` table; brightness is the `dim` line in `render`; the
+rotation span is `DOME_SPAN` and its glide is the `4.5` in the progress easing; the shooting-star
+rate is the `rate` line (`0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5`); meteor lifetime and speed
+are in `meteors.ts::spawn`, and the shared direction is `DX`/`DY`.
 
 ## 4. Change recipes
 
@@ -209,6 +223,17 @@ if the spelling differs (it's "Shedar", not "Schedar").
   renderer on the main thread, which is why `sky/renderer.ts` is imported in two places.
 - ⚠ **`src/data/sky.json` is generated.** Hand edits are lost the next time
   `scripts/make-sky-catalog.mjs` runs. It is BSD-3-Clause data (see Credits).
+- ⚠ **`fov` in `camera()` is the angle from the center of view to a screen corner,** not half of
+  something. For lens 1 the focal length is exactly the old `R / tan(fov / 2)`, so the dome shots
+  look identical to before the camera existed; a halved angle once zoomed every shot in about 2×.
+- ⚠ **Unlike what you'd expect, the horizon curves up at the sides** in the dome projection when
+  the camera tilts, so checking the point straight ahead is not enough to keep ground off screen.
+  `horizonTop` samples the whole visible horizon. Drawing the ground from points sorted by x
+  instead of by azimuth once striped the whole sky.
+- ⚠ **The dawn shot depends on page layout:** `Sky.astro` measures where the skyline's far hills
+  land at the very end and sends it as `horizonY`, and re-sends on any layout change through a
+  `ResizeObserver`. If the skyline moves or changes height, the horizon follows; if `.skyline`
+  is renamed, the shot falls back to 75% of the screen height.
 - ⚠ **Planet positions are valid from 1800 to 2050.** They use Standish's approximate Keplerian
   elements (table 1, `astro.ts::ELEMENTS`). After 2050, switch to table 2 (valid 3000 BC to
   3000 AD), which adds correction terms for Jupiter and Saturn.
