@@ -1,10 +1,12 @@
 ---
 // Amman at dawn, back to front: hazy far ranges with a rim of first light; a mist band; the
 // modern city on the middle hills (the Abdali towers, the Jordan Gate twin towers, King Abdullah I
-// Mosque with its blue dome, and the Raghadan flagpole flying the Jordanian flag); Citadel hill
-// with the Temple of Hercules columns and the Umayyad Palace dome;
-// and the nearest hills covered in stone houses with water tanks on their roofs and window lights
-// that go out as dawn comes.
+// Mosque with its blue dome, Abu Darwish Mosque in its black-and-white stripes, and the Raghadan
+// flagpole flying the Jordanian flag), its ridge and tower tops catching the first light; Citadel
+// hill with the Temple of Hercules columns and the Umayyad Palace dome; and the nearest hills
+// covered in stone houses with water tanks on their roofs and window lights that go out as dawn
+// comes. Across the hills, minarets lit green, as Amman's are through the night; red beacons on
+// the tallest towers; and a flock of rooftop pigeons circling, as Amman's pigeon keepers fly them.
 //
 // Generated deterministically at build time. The sky's horizon sits at HORIZON_Y in this
 // viewBox, just under the far ranges' lowest crest, so the canvas ground is always tucked behind
@@ -60,7 +62,14 @@ function houses(f: (x: number) => number, minH: number, maxH: number, gap: numbe
   return out;
 }
 
-const mids = houses(mid, 6, 16, 14, 0.18, (x) => (x > 540 && x < 680) || (x > 820 && x < 910) || (x > 970 && x < 1130));
+const mids = houses(
+  mid,
+  6,
+  16,
+  14,
+  0.18,
+  (x) => (x > 540 && x < 680) || (x > 820 && x < 910) || (x > 970 && x < 1130) || (x > 1158 && x < 1236),
+);
 const fronts = houses(front, 12, 30, 3, 0.3, (x) => x < 440 && x > 150);
 const citadelHouses = houses(citadel, 8, 18, 6, 0.2, (x) => citadel(x) > front(x) - 12 || (x > 238 && x < 392));
 
@@ -100,6 +109,19 @@ const band = (i: number) => {
 };
 const chevron = `M${poleX} ${r1(poleTop + wave(0))} L${r1(poleX + flagW * 0.48)} ${r1(poleTop + 1.5 * stripe + wave(0.48))} L${poleX} ${r1(poleTop + 3 * stripe + wave(0))} Z`;
 
+// Abu Darwish Mosque on Jabal al-Ashrafieh: a striped hall and a square striped minaret
+const darwishX = 1172;
+const darwishBase = mid(darwishX + 30) + 1;
+
+// Small minarets with green lights, on the middle hills and the nearest ones
+const greenMid = [140, 452, 742, 1404].map((x) => ({ x, base: mid(x) + 1, h: 34 + (x % 7) * 2 }));
+const greenFront = [96, 988, 1258].map((x) => ({ x, base: front(x) + 2, h: 52 + (x % 5) * 3 }));
+
+// A flock of pigeons, scattered around the middle of their loop
+const pigeons = [
+  [0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6], [-8, 4], [23, 11],
+];
+
 // Citadel: the Temple of Hercules (standing columns with a fragment of architrave) and the
 // Umayyad Palace's domed hall
 const templeX = 262;
@@ -123,6 +145,11 @@ const palaceBase = citadel(palaceX) - 1;
       <stop offset="0" stop-color="#3f5f8f"></stop>
       <stop offset="1" stop-color="#1c2b4a"></stop>
     </radialGradient>
+    <!-- Ablaq: the alternating dark and pale courses of Abu Darwish Mosque -->
+    <pattern id="amman-ablaq" width="8" height="6" patternUnits="userSpaceOnUse">
+      <rect width="8" height="3" fill="#121729"></rect>
+      <rect y="3" width="8" height="3" fill="#4a4b60"></rect>
+    </pattern>
   </defs>
 
   <!-- Far ranges, hazy with distance, with a rim of first light on the crest -->
@@ -133,6 +160,7 @@ const palaceBase = citadel(palaceX) - 1;
   <!-- Middle hills and the modern city -->
   <g class="amman-mid">
     <path d={ridge(mid)}></path>
+    <path class="amman-rim soft" d={crest(mid)}></path>
     {mids.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
     {abdali.map((t) => t.slant
       ? <path d={`M${t.x} ${r1(mid(t.x) + 2)} V${r1(mid(t.x) - t.h + 14)} L${t.x + t.w} ${r1(mid(t.x) - t.h)} V${r1(mid(t.x) + 2)} Z`} />
@@ -150,7 +178,29 @@ const palaceBase = citadel(palaceX) - 1;
     ))}
     {/* Raghadan flagpole */}
     <rect x={poleX - 1.5} y={r1(poleTop)} width="3" height={r1(mid(poleX) - poleTop + 2)}></rect>
+    {greenMid.map((m) => (
+      <g>
+        <rect x={m.x - 1.5} y={r1(m.base - m.h)} width="3" height={m.h}></rect>
+        <rect x={m.x - 3} y={r1(m.base - m.h * 0.72)} width="6" height="2"></rect>
+      </g>
+    ))}
   </g>
+  {/* Abu Darwish Mosque, in its stripes */}
+  <g class="amman-darwish">
+    <rect x={darwishX} y={r1(darwishBase - 26)} width="62" height="27" fill="url(#amman-ablaq)"></rect>
+    <rect x={darwishX + 64} y={r1(darwishBase - 66)} width="10" height="67" fill="url(#amman-ablaq)"></rect>
+    <path d={`M${darwishX + 63} ${r1(darwishBase - 66)} L${darwishX + 69} ${r1(darwishBase - 76)} L${darwishX + 75} ${r1(darwishBase - 66)} Z`} fill="#121729"></path>
+    <path d={`M${darwishX + 18} ${r1(darwishBase - 26)} A13 13 0 0 1 ${darwishX + 44} ${r1(darwishBase - 26)} Z`} fill="#121729"></path>
+  </g>
+  {/* The first light catching the tops of the towers */}
+  {[...abdali.filter((t) => !t.slant), ...gate].map((t) => (
+    <rect class="tower-rim" x={t.x} y={r1(mid(t.x) - t.h)} width={t.w} height="1.4" />
+  ))}
+  {/* Aviation beacons on the tallest towers */}
+  {[gate[0], gate[1], abdali[1]].map((t, i) => (
+    <circle class="beacon" cx={r1(t.x + t.w / 2)} cy={r1(mid(t.x) - t.h - (t.slant ? 0 : 3))} r="1.8" style={`animation-delay:${-i * 0.8}s`} />
+  ))}
+  {greenMid.map((m) => <circle class="green" cx={m.x} cy={r1(m.base - m.h - 2)} r="2" />)}
   <path class="amman-dome" d={`M${mosqueX - 26} ${r1(mosqueBase - 33)} A26 26 0 0 1 ${mosqueX + 26} ${r1(mosqueBase - 33)} Z`} fill="url(#amman-dome)"></path>
   <g class="amman-flag">
     <path d={band(0)} fill="#16161a"></path>
@@ -186,6 +236,22 @@ const palaceBase = citadel(palaceX) - 1;
     <path d={ridge(front)}></path>
     {fronts.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
     {[...fronts, ...mids, ...citadelHouses].filter((b) => b.tank).map((b) => <rect x={r1(b.tank!.x)} y={r1(b.tank!.y)} width="5" height="3" />)}
+    {greenFront.map((m) => (
+      <g>
+        <rect x={m.x - 2.5} y={r1(m.base - m.h)} width="5" height={m.h}></rect>
+        <rect x={m.x - 4.5} y={r1(m.base - m.h * 0.74)} width="9" height="3"></rect>
+        <path d={`M${m.x - 2.5} ${r1(m.base - m.h)} L${m.x} ${r1(m.base - m.h - 8)} L${m.x + 2.5} ${r1(m.base - m.h)} Z`}></path>
+      </g>
+    ))}
+  </g>
+  {greenFront.map((m) => <circle class="green" cx={m.x} cy={r1(m.base - m.h - 9)} r="2.4" />)}
+  {/* Rooftop pigeons, circling over the old city */}
+  <g class="pigeons" transform="translate(470 112)">
+    <g class="flock">
+      {pigeons.map(([x, y], i) => (
+        <path class="pigeon" d={`M${x * 1.4 - 4.6} ${y * 1.4} Q${x * 1.4 - 2.3} ${y * 1.4 - 3.4} ${x * 1.4} ${y * 1.4} Q${x * 1.4 + 2.3} ${y * 1.4 - 3.4} ${x * 1.4 + 4.6} ${y * 1.4}`} style={`animation-delay:${(-i * 0.13).toFixed(2)}s`} />
+      ))}
+    </g>
   </g>
   {/* About two thirds of the lights go out, one by one, as dawn comes; the rest stay on */}
   {[...fronts, ...mids, ...citadelHouses].filter((b) => b.light).map((b) => (

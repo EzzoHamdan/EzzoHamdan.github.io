@@ -904,6 +904,80 @@ section h2 {
   opacity: 0.85;
 }
 
+.amman-rim.soft {
+  stroke: rgba(240, 163, 94, 0.22);
+  stroke-width: 1;
+}
+
+.skyline .tower-rim {
+  fill: rgba(240, 163, 94, 0.45);
+}
+
+/* Amman's minarets are lit green through the night */
+.skyline .green {
+  fill: #8dffbf;
+  filter: drop-shadow(0 0 4px rgba(80, 255, 150, 0.95));
+}
+
+.skyline .beacon {
+  fill: #ff5a4f;
+  filter: drop-shadow(0 0 2px rgba(255, 70, 60, 0.9));
+}
+
+.skyline .pigeon {
+  fill: none;
+  stroke: #10142a;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skyline .beacon {
+    animation: beacon 2.4s steps(1, end) infinite;
+  }
+
+  /* The flock loops slowly over the rooftops, each bird flapping in its own rhythm */
+  .skyline .flock {
+    animation: flock 28s linear infinite;
+  }
+
+  .skyline .pigeon {
+    animation: flap 0.42s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes beacon {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  71%,
+  100% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes flap {
+  to {
+    scale: 1 -0.6;
+  }
+}
+
+/* An ellipse in eight steps, about 230 by 50 viewBox units */
+@keyframes flock {
+  0% { translate: 0 0; }
+  12.5% { translate: 68px -18px; }
+  25% { translate: 160px -24px; }
+  37.5% { translate: 220px -10px; }
+  50% { translate: 232px 8px; }
+  62.5% { translate: 180px 22px; }
+  75% { translate: 90px 24px; }
+  87.5% { translate: 20px 12px; }
+  100% { translate: 0 0; }
+}
+
 .skyline .lit {
   fill: var(--dawn);
   opacity: 0.8;
