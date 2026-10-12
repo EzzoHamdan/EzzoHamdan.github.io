@@ -27,10 +27,10 @@
 
 **Limits:**
 
-- **JavaScript:** about 9 KB gzipped on first load (the sky's page side and the journey
+- **JavaScript:** about 10 KB gzipped on first load (the sky's page side and the journey
   choreography). The sky worker, including the 5,044-star catalog (every naked-eye star, to
-  magnitude 6), the planet ephemeris and both renderers, is about 50 KB gzipped and loads after the
-  page has painted. Everything else is HTML and CSS.
+  magnitude 6), the planet ephemeris, the land map and both renderers, is about 58 KB gzipped and
+  loads after the page has painted. Everything else is HTML and CSS.
 - **The galaxy journey** needs a window at least 900 × 560 px with motion allowed
   (`journey.ts::JOURNEY_QUERY`); everything else gets the dome.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
@@ -86,7 +86,9 @@ nothing deploys from a feature branch.
 | Sky, the dome: atmosphere colors, drawing, twinkle, scroll dimming, shooting-star rate, wishes | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
 | Galaxy journey, page side: stops, scroll track, plane choreography, the camera, nav and focus | [`src/scripts/journey.ts`](src/scripts/journey.ts) |
 | Galaxy journey, sky side: star field, galaxies, warp, takeoff and landing | [`src/scripts/sky/journey.ts`](src/scripts/sky/journey.ts) (same worker) |
-| Galaxy portraits (Andromeda, Triangulum, Whirlpool, Sombrero, Milky Way) | [`src/scripts/sky/galaxies.ts`](src/scripts/sky/galaxies.ts) |
+| Galaxy portraits (Andromeda, Triangulum, Whirlpool, Sombrero, Milky Way) and the Sun's place in the Milky Way | [`src/scripts/sky/galaxies.ts`](src/scripts/sky/galaxies.ts) |
+| The globe at the end (Amman at the next sunrise) | [`src/scripts/sky/earth.ts`](src/scripts/sky/earth.ts) |
+| Land map for the globe (generated, do not edit) | [`src/data/earth.json`](src/data/earth.json) ← [`scripts/make-earth-map.mjs`](scripts/make-earth-map.mjs) |
 | Sky: Amman, sidereal time, Sun, planets, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
 | Sky: catalog arrays, the camera and its lens, the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
 | Sky: shooting stars (one shared direction, tapered trails) | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
@@ -213,10 +215,25 @@ Every stop does the same three things:
 | `experience` | The Triangulum galaxy (2.7 million) | Teal |
 | `projects` | The Whirlpool and its companion NGC 5195 (about 30 million) | Magenta |
 | `education` | The Sombrero, its dust lane edge-on (about 30 million) | Amber |
-| `contact` | Home: the Milky Way, then dawn over Amman with shooting stars, as in the dome | Dawn |
+| *(after the last stop)* | The homecoming, below | Space, then dawn |
+| `contact` | Dawn over Amman with shooting stars, some falling behind the skyline, as in the dome | Dawn |
 
 Each galaxy is far behind its section's title, grows as the section is read, and is passed close
 by on the way to the next title. The caption at the bottom names it.
+
+**The homecoming** (`sky/journey.ts::drawHomeBack`, `drawHomeFront`). After the last stop come
+three more stops with no text (`journey.ts::HOME_STAGES`), each holding like any stop. The camera
+slows to a creep and the motion becomes a powers-of-ten zoom (`ZOOM` = 14× per stage), always
+closing in on the next destination at the center of the screen:
+
+| Stage | What is on screen |
+| --- | --- |
+| `milkyway` | The Milky Way, centered on the Sun's place in the Orion Arm (`galaxies.ts::SUN_IN_MILKY_WAY`), marked with a brass ring |
+| `sun` | The Solar System, the planets where they really are at the next sunrise in Amman (`astro.ts::solarSystem`), orbits on a square-root scale so the inner planets aren't crowded into the Sun |
+| `earth` | The zoom moves from the Sun to Earth, which grows out of its dot into a globe centered on Amman, lit for the moment of the next sunrise (`astro.ts::nextSunrise`, `subsolarPoint`), so Amman sits on the dawn line, marked in brass |
+| landing | The globe grows a little and fades into the predawn sky as the contact section and the skyline scroll in |
+
+The Solar System is turned so the Sun lies on the same side of Earth as the daylight on the globe.
 
 ```text
 scroll ─► journey.ts: routeAt(scrollY) = position in stops (u)
@@ -263,8 +280,10 @@ length, so text and space move as one. Nothing on the canvas depends on where th
 
 **Tunables** (`src/scripts/journey.ts` unless noted): `HOLD` (hold width), `STRIDE` (camera travel
 and arrival distance per stop), `PACE` (scroll per stop) and `WEIGHT` (its share per kind of
-stop), `LAG` (camera easing), `CREEP`; the arrive and depart paths are in `place`, and a jump's
-duration is the `ms` line in `flyTo`. In `src/scripts/sky/journey.ts`:
+stop), `HOME_WEIGHT` (scroll per homecoming stage), `LAG` (camera easing), `CREEP`; the arrive and
+depart paths are in `place`, and a jump's duration is the `ms` line in `flyTo`. The homecoming's
+zoom is `homeLevel`, `ZOOM` and `ECLIPTIC_TILT` in `sky/journey.ts`; the globe's colors are at the
+top of `sky/earth.ts`. In `src/scripts/sky/journey.ts`:
 `DESTINATIONS` (galaxy, side, tint), the galaxy offsets in `placeGalaxies`, warp is `EXPOSURE`,
 `MAX_STREAK` and the `warp` line, and the sky colors are `NIGHT`, `SPACE`, `PREDAWN`, `DAWN`. Each
 galaxy's look is its branch in `galaxies.ts::paintGalaxy`.
@@ -378,6 +397,14 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **The stars and the text share one focal length:** `F = 0.72 × viewport width`, used both as the
   CSS `perspective()` of every plane and by the star field (sent in the `route` message). Change
   it in `journey.ts::layout` only.
+- ⚠ **`src/data/earth.json` is generated** from Natural Earth by `scripts/make-earth-map.mjs` (the
+  commands are at its top; it can also write a PNG preview to check the coastlines). Natural Earth
+  polygons wrap across the 180° meridian and Antarctica's wraps around the pole; the script
+  unwraps them, and a naive fill once failed on exactly that.
+- **The homecoming is lit for the next sunrise, not for now.** The globe and the planets are
+  computed once when the sky starts (`sky/journey.ts`, `sunrise`), so the story always lands at
+  dawn whatever the hour. The globe is painted 48 rows a frame from then on, so it never stalls
+  the sky.
 - **The project pairs** (`.project-pair`) exist only for the journey, where each pair is one
   stop; elsewhere they are `display: contents`, so the projects grid is unchanged.
 
@@ -403,6 +430,11 @@ if the spelling differs (it's "Shedar", not "Schedar").
   tilting between sections disorganized on fast scrolls. The camera only moves forward, every stop
   follows the same arrive, hold, depart path, and only one plane shows while reading. The dome
   stays for phones and reduced motion, where 3D planes would be cramped or unwelcome.
+- **The homecoming** (2026-10-12, owner's request): from far away to the Milky Way, the Solar
+  System, Earth and then Amman. It is a zoom rather than more forward flight, because each stage
+  is a hundred to a billion times smaller than the last; flying at one speed would rush or stall
+  them. The orbits are not to scale (square root of the distance) and the Earth grows faster than
+  its orbit, both on purpose: at true scale the inner planets and Earth would be invisible.
 - **Links jump instead of scrolling through** (2026-10-12, owner's report). Smooth-scrolling to
   a far section played every plane's arrive and depart on the way, which flashed them past
   abruptly. A jump is one move with nothing in between (§3b).
@@ -437,5 +469,7 @@ if the spelling differs (it's "Shedar", not "Schedar").
 
 Star positions and star names come from
 [d3-celestial](https://github.com/ofrohn/d3-celestial) (© 2015 Olaf Frohn, BSD-3-Clause), which
-is built on Hipparcos and Yale Bright Star Catalog data. Brand icons are from
+is built on Hipparcos and Yale Bright Star Catalog data. The land on the globe is
+[Natural Earth](https://www.naturalearthdata.com/) (public domain), via
+[world-atlas](https://github.com/topojson/world-atlas) (ISC). Brand icons are from
 [Simple Icons](https://simpleicons.org/) (CC0).
