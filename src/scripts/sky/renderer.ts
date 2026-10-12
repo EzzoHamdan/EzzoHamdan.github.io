@@ -2,16 +2,20 @@
  * The sky over Amman, drawn on one canvas. Runs in a Web Worker on an OffscreenCanvas when the
  * browser supports it, or on the page otherwise.
  *
- * A still, real sky: stars to magnitude 5 and the Milky Way where they are over Amman right now
- * (or tonight at 21:00 in daylight), twinkling, with shooting stars on top. Scrolling never moves
- * the stars, so text stays easy to read; it only dims them behind reading sections, fades them
- * toward the dawn footer, and brings more shooting stars toward the end of the page.
+ * A still, real sky: stars to magnitude 5, the naked-eye planets and the Milky Way where they are
+ * over Amman right now (or tonight at 21:00 in daylight), with shooting stars on top. Stars
+ * twinkle; planets shine steadily, as they do in the real sky.
  *
- * Reduced motion: a still sky with no twinkle and no shooting stars.
- * Calm (article pages): a dimmer sky with rare shooting stars.
+ * Scrolling never moves anything in the sky, so text stays easy to read. It only changes the
+ * atmosphere (dusk at the top, deep midnight while reading, dawn at the end), how bright the
+ * sky is, and how many shooting stars fall. Clicking empty sky makes a wish: a shooting star
+ * launches from that point.
+ *
+ * Reduced motion: a still sky with no twinkle, no shooting stars and no wishes.
+ * Calm (article pages): a dimmer midnight sky with rare shooting stars.
  */
-import { night, siderealTime } from './astro';
-import { named, starColor, starMag, stars, type View } from './catalog';
+import { PLANETS, night, planets, siderealTime } from './astro';
+import { named, projectOne, starColor, starMag, stars, type View } from './catalog';
 import { createMeteors } from './meteors';
 import { drawMilkyWay } from './milky-way';
 
@@ -30,16 +34,51 @@ export type SkyMessage =
   | { type: 'motion'; reduced: boolean }
   | { type: 'visible'; visible: boolean }
   | { type: 'pointer'; x: number; y: number }
-  | { type: 'pointer-leave' };
+  | { type: 'pointer-leave' }
+  | { type: 'wish'; x: number; y: number };
 
-/** Index into `starNames`, with its screen position; `index: -1` hides the label. */
-export type SkyEvent = { type: 'hover'; index: number; x: number; y: number };
+/**
+ * What the pointer is over: a star (index into `starNames`) or a planet (index into `PLANETS`),
+ * with its screen position; `index: -1` hides the label.
+ */
+export type SkyEvent = { type: 'hover'; kind: 'star' | 'planet'; index: number; x: number; y: number };
 
 type Canvas = HTMLCanvasElement | OffscreenCanvas;
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 const STAR_COLORS = ['#b4c6ff', '#f2f4ff', '#fff3df', '#ffd3a3'];
+const PLANET_COLORS: Record<(typeof PLANETS)[number], string> = {
+  mercury: '#d9d4cc',
+  venus: '#fff6dc',
+  mars: '#ff9a6b',
+  jupiter: '#ffe9c9',
+  saturn: '#f5dca0',
+};
 const MINUTE = 60_000;
+
+/**
+ * The atmosphere along the page: [scroll position, sky color at the top, color at the bottom].
+ * Dusk afterglow at the top, deep midnight while reading, then pre-dawn and dawn at the end.
+ */
+const ATMOSPHERE: [number, number[], number[]][] = [
+  [0, [12, 18, 46], [44, 32, 82]],
+  [0.12, [7, 11, 26], [22, 28, 64]],
+  [0.75, [6, 9, 22], [18, 24, 56]],
+  [0.9, [10, 14, 34], [58, 40, 74]],
+  [1, [16, 24, 56], [118, 74, 70]],
+];
+
+function atmosphere(p: number) {
+  let i = 1;
+  while (i < ATMOSPHERE.length - 1 && ATMOSPHERE[i][0] < p) i++;
+  const [p0, top0, low0] = ATMOSPHERE[i - 1];
+  const [p1, top1, low1] = ATMOSPHERE[i];
+  const t = Math.min(1, Math.max(0, (p - p0) / (p1 - p0)));
+  const mix = (a: number[], b: number[], k: number) => a.map((v, j) => Math.round(v + (b[j] - v) * k));
+  const top = mix(top0, top1, t);
+  const low = mix(low0, low1, t);
+  return { top: `rgb(${top})`, mid: `rgb(${mix(top, low, 0.25)})`, low: `rgb(${low})` };
+}
 
 const raf: (cb: (t: number) => void) => number =
   typeof requestAnimationFrame === 'function'
@@ -82,6 +121,9 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   const mctx = milky.getContext('2d') as Ctx;
   const milkySprite = softSprite(128, '205,215,255', 0.35);
   const glows = STAR_COLORS.map((c) => softSprite(32, hex(c)));
+  const planetGlows = Object.fromEntries(
+    PLANETS.map((k) => [k, softSprite(48, hex(PLANET_COLORS[k]), 0.15)]),
+  ) as Record<(typeof PLANETS)[number], Canvas>;
   const meteors = createMeteors(makeCanvas);
 
   let w = 0, h = 0, dpr = 1;
@@ -91,7 +133,8 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   let projectedAt = 0;
   let target = 0, progress = 0;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12);
-  let hovered = -1;
+  let hovered = { kind: 'star' as 'star' | 'planet', index: -1 };
+  let planetsNow: { key: (typeof PLANETS)[number]; x: number; y: number; u: number; mag: number }[] = [];
 
   // Positions are for one moment; refresh each minute so a long visit stays "right now"
   function project() {
@@ -100,6 +143,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     const lst = siderealTime(moment.time);
     stars.project(lst, view);
     named.project(lst, view);
+    planetsNow = planets(moment.time).map((pl) => ({ key: pl.key, mag: pl.mag, ...projectOne(pl.ra, pl.dec, lst, view) }));
     mctx.clearRect(0, 0, milky.width, milky.height);
     drawMilkyWay(mctx, milkySprite, lst, view, 0.5);
   }
@@ -133,6 +177,24 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     ctx.globalAlpha = 1;
   }
 
+  // Planets shine steadily (no twinkle), slightly larger and warmer than stars of equal brightness
+  function drawPlanets(dim: number) {
+    for (const pl of planetsNow) {
+      if (pl.u < 0.02) continue;
+      const alpha = Math.min(1, 1.1 - 0.12 * pl.mag) * Math.min(1, pl.u * 6) * dim;
+      const r = Math.min(3.4, Math.max(1.6, 2.6 - 0.35 * pl.mag));
+      const g = r * 9;
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.drawImage(planetGlows[pl.key], pl.x - g / 2, pl.y - g / 2, g, g);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = PLANET_COLORS[pl.key];
+      ctx.beginPath();
+      ctx.arc(pl.x, pl.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function render(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
@@ -143,17 +205,27 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     // Full sky behind the hero, calmer behind reading sections, fading into the footer dawn
     const dim = calm ? 0.5 : (1 - 0.3 * smooth(0.04, 0.14, p)) * (1 - 0.65 * smooth(0.82, 1, p));
 
-    ctx.clearRect(0, 0, w, h);
+    // The atmosphere: dusk at the top of the page, midnight while reading, dawn at the end
+    const air = atmosphere(calm ? 0.4 : p);
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, air.top);
+    sky.addColorStop(0.55, air.mid);
+    sky.addColorStop(1, air.low);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
     ctx.globalAlpha = 0.9 * dim;
     ctx.drawImage(milky, 0, 0, w, h);
     ctx.globalAlpha = 1;
     drawStars(now / 1000, dim);
+    drawPlanets(dim);
 
-    if (hovered >= 0) {
+    if (hovered.index >= 0) {
+      const at = hovered.kind === 'star' ? { x: named.x[hovered.index], y: named.y[hovered.index] } : planetsNow[hovered.index];
       ctx.strokeStyle = 'rgba(201,161,91,0.9)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(named.x[hovered], named.y[hovered], 9, 0, Math.PI * 2);
+      ctx.arc(at.x, at.y, 9, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -194,19 +266,27 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   }
 
   function hover(x: number, y: number) {
-    let best = -1;
+    let best = { kind: 'star' as 'star' | 'planet', index: -1, x: 0, y: 0 };
     let bestDist = 22 * 22;
     for (let i = 0; i < named.length; i++) {
       if (named.u[i] < 0.03) continue;
       const d = (named.x[i] - x) ** 2 + (named.y[i] - y) ** 2;
       if (d < bestDist) {
         bestDist = d;
-        best = i;
+        best = { kind: 'star', index: i, x: named.x[i], y: named.y[i] };
       }
     }
-    if (best === hovered) return;
-    hovered = best;
-    emit({ type: 'hover', index: best, x: best >= 0 ? named.x[best] : 0, y: best >= 0 ? named.y[best] : 0 });
+    planetsNow.forEach((pl, i) => {
+      if (pl.u < 0.03) return;
+      const d = (pl.x - x) ** 2 + (pl.y - y) ** 2;
+      if (d < bestDist) {
+        bestDist = d;
+        best = { kind: 'planet', index: i, x: pl.x, y: pl.y };
+      }
+    });
+    if (best.kind === hovered.kind && best.index === hovered.index) return;
+    hovered = { kind: best.kind, index: best.index };
+    emit({ type: 'hover', ...best });
     if (reduced || !visible) render(performance.now());
   }
 
@@ -250,6 +330,9 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
           return;
         case 'pointer-leave':
           hover(-1e4, -1e4);
+          return;
+        case 'wish':
+          if (!reduced && visible) meteors.launch(msg.x, msg.y);
           return;
       }
       sync();

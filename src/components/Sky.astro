@@ -3,8 +3,8 @@
 
 <script>
   import type { SkyEvent, SkyMessage } from '../scripts/sky/renderer';
-  import { showers, starNames } from '../data/sky-names';
-  import { night } from '../scripts/sky/astro';
+  import { planetNames, showers, starNames } from '../data/sky-names';
+  import { PLANETS, night } from '../scripts/sky/astro';
 
   const canvas = document.getElementById('sky') as HTMLCanvasElement;
   const starLabel = document.getElementById('star-label') as HTMLElement;
@@ -19,15 +19,14 @@
       starLabel.hidden = true;
       return;
     }
-    const star = starNames[e.index];
+    const planet = e.kind === 'planet';
+    const body = planet ? planetNames[PLANETS[e.index]] : starNames[e.index];
     const name = document.createElement('strong');
-    name.textContent = lang === 'ar' ? star.ar : star.en;
-    starLabel.replaceChildren(name);
-    if (lang === 'en') {
-      const origin = document.createElement('span');
-      origin.textContent = `from ${star.origin}`;
-      starLabel.append(origin);
-    }
+    name.textContent = lang === 'ar' ? body.ar : body.en;
+    const detail = document.createElement('span');
+    if (lang === 'ar') detail.textContent = planet ? 'كوكب' : '';
+    else detail.textContent = planet ? `planet, called ${body.origin} in Arabic astronomy` : `from ${body.origin}`;
+    starLabel.replaceChildren(name, ...(detail.textContent ? [detail] : []));
     starLabel.style.transform = `translate(${e.x + 14}px, ${e.y - 10}px)`;
     starLabel.hidden = false;
   }
@@ -44,6 +43,14 @@
         : [mode === 'now' ? `The sky over Amman right now, ${clock}` : `Tonight’s sky over Amman, ${clock}`];
     const s = showers[shower];
     if (s) lines.push(lang === 'ar' ? `ذروة زخّة ${s.ar} الليلة` : `The ${s.en} meteor shower peaks tonight`);
+    if (!motion.matches) {
+      const touch = !matchMedia('(hover: hover)').matches;
+      lines.push(
+        lang === 'ar'
+          ? touch ? 'المس السماء لتتمنّى أمنية' : 'انقر على السماء لتتمنّى أمنية'
+          : touch ? 'Tap the sky to make a wish' : 'Click the sky to make a wish',
+      );
+    }
     caption.replaceChildren(...lines.map((text) => Object.assign(document.createElement('span'), { textContent: text })));
     caption.hidden = false;
   }
@@ -99,14 +106,33 @@
     );
     onScroll();
 
-    // Star names on hover, only over empty sky so reading is never interrupted
+    // Hover names and wishes only over empty sky, so reading and links are never interrupted.
+    // Controls and boxes always count as content; text blocks only where their lines actually are,
+    // so the empty space beside a heading is still sky.
+    const solid = 'a, button, input, svg, .card, .project, .site-header';
+    const text = 'p, li, dt, dd, h1, h2, h3, h4, time';
+    const onSky = (e: MouseEvent) => {
+      const el = e.target as Element;
+      if (el.closest?.(solid) || getSelection()?.toString()) return false;
+      const block = el.closest?.(text);
+      if (!block) return true;
+      const range = document.createRange();
+      range.selectNodeContents(block);
+      return ![...range.getClientRects()].some(
+        (r) => e.clientX >= r.left - 6 && e.clientX <= r.right + 6 && e.clientY >= r.top - 4 && e.clientY <= r.bottom + 4,
+      );
+    };
     if (matchMedia('(hover: hover)').matches) {
-      const content = 'a, button, p, li, dt, dd, h1, h2, h3, h4, svg, time, .card';
       document.addEventListener('pointermove', (e) => {
-        if ((e.target as Element).closest?.(content)) post({ type: 'pointer-leave' });
-        else post({ type: 'pointer', x: e.clientX, y: e.clientY });
+        if (onSky(e)) post({ type: 'pointer', x: e.clientX, y: e.clientY });
+        else post({ type: 'pointer-leave' });
       });
       document.addEventListener('pointerleave', () => post({ type: 'pointer-leave' }));
+    }
+    if (!calm) {
+      document.addEventListener('click', (e) => {
+        if (onSky(e)) post({ type: 'wish', x: e.clientX, y: e.clientY });
+      });
     }
 
     document.addEventListener('visibilitychange', () => post({ type: 'visible', visible: !document.hidden }));

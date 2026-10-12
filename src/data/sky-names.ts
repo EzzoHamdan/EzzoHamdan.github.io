@@ -56,3 +56,12 @@ export const showers = [
   { en: 'Leonids', ar: 'الأسديات', month: 11, day: 17, ra: 152, dec: 22 },
   { en: 'Geminids', ar: 'التوأميات', month: 12, day: 14, ra: 112, dec: 33 },
 ];
+
+/** The naked-eye planets, keyed like `PLANETS` in src/scripts/sky/astro.ts. */
+export const planetNames: Record<string, StarName> = {
+  mercury: { en: 'Mercury', origin: 'ʿUṭārid', ar: 'عطارد' },
+  venus: { en: 'Venus', origin: 'al-Zuhara', ar: 'الزهرة' },
+  mars: { en: 'Mars', origin: 'al-Mirrīkh', ar: 'المريخ' },
+  jupiter: { en: 'Jupiter', origin: 'al-Mushtarī', ar: 'المشتري' },
+  saturn: { en: 'Saturn', origin: 'Zuḥal', ar: 'زحل' },
+};

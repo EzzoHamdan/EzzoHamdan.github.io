@@ -38,6 +38,12 @@ interface Meteor {
   bright: boolean;
 }
 
+/** The spark where a wished-for shooting star begins. */
+interface Spark {
+  x: number; y: number;
+  age: number;
+}
+
 interface Train {
   x1: number; y1: number; x2: number; y2: number;
   vx: number; vy: number;
@@ -78,11 +84,30 @@ export function createMeteors(makeCanvas: (w: number, h: number) => Canvas) {
 
   let meteors: Meteor[] = [];
   let trains: Train[] = [];
+  let sparks: Spark[] = [];
 
   return {
     clear() {
       meteors = [];
       trains = [];
+      sparks = [];
+    },
+
+    /** A wish: a bright shooting star that starts exactly at (x, y), with a spark at its origin. */
+    launch(x: number, y: number) {
+      const size = rand(1.3, 1.6);
+      const speed = rand(480, 620);
+      meteors.push({
+        x, y, speed, size,
+        life: rand(1.5, 1.9),
+        maxTrail: Math.min(420, speed * 0.5),
+        age: 0,
+        style: Math.random() < 0.5 ? 0 : 4,
+        flareAt: rand(0.55, 0.75),
+        flare: rand(0.6, 1),
+        bright: true,
+      });
+      sparks.push({ x, y, age: 0 });
     },
 
     /** Spawn one shooting star in a w×h view; a fireball is bigger, brighter and longer. */
@@ -125,6 +150,10 @@ export function createMeteors(makeCanvas: (w: number, h: number) => Canvas) {
           meteors.splice(i, 1);
         }
       }
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        sparks[i].age += dt;
+        if (sparks[i].age >= 0.7) sparks.splice(i, 1);
+      }
       for (let i = trains.length - 1; i >= 0; i--) {
         const t = trains[i];
         t.age += dt;
@@ -139,6 +168,14 @@ export function createMeteors(makeCanvas: (w: number, h: number) => Canvas) {
 
     draw(ctx: Ctx, dim = 1) {
       ctx.lineCap = 'round';
+      for (const k of sparks) {
+        const t = k.age / 0.7;
+        ctx.strokeStyle = `rgba(201,161,91,${0.8 * (1 - t)})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(k.x, k.y, 4 + t * 22, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       for (const t of trains) {
         const a = 0.16 * (1 - t.age / t.life) * dim;
         ctx.strokeStyle = `rgba(${STYLES[t.style].trail},${a})`;
