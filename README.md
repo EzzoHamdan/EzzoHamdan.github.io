@@ -4,7 +4,8 @@
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
 > **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 how the sky works →
 > §4 change recipes → §5 failure messages → §6 sharp edges → §7 decisions.
-> **Reflects code as of 2026-10-12** (`sky-over-amman` branch: the "sky over Amman" design).
+> **Reflects code as of 2026-10-12** (`galaxy-journey` branch: the galaxy journey, an experiment
+> built on the "sky over Amman" design, which stays on `sky-over-amman`).
 
 **What must not break:**
 
@@ -26,9 +27,12 @@
 
 **Limits:**
 
-- **JavaScript:** about 5.5 KB gzipped on first load. The sky worker, including the 5,044-star
-  catalog (every naked-eye star, to magnitude 6) and the planet ephemeris, is about 40 KB gzipped
-  and loads after the page has painted. Everything else is HTML and CSS.
+- **JavaScript:** about 9 KB gzipped on first load (the sky's page side and the journey
+  choreography). The sky worker, including the 5,044-star catalog (every naked-eye star, to
+  magnitude 6), the planet ephemeris and both renderers, is about 50 KB gzipped and loads after the
+  page has painted. Everything else is HTML and CSS.
+- **The galaxy journey** needs a window at least 900 × 560 px with motion allowed
+  (`journey.ts::JOURNEY_QUERY`); everything else gets the dome.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
 - **Hosting:** GitHub Pages serves static files only; there is no server code anywhere.
 
@@ -78,8 +82,11 @@ nothing deploys from a feature branch.
 | `llms.txt` / `llms-full.txt` text | [`src/lib/llms.ts`](src/lib/llms.ts) |
 | Profile page (used by both languages) | [`src/components/ProfilePage.astro`](src/components/ProfilePage.astro) |
 | `<head>`: meta, Open Graph, hreflang, fonts | [`src/layouts/Base.astro`](src/layouts/Base.astro) |
-| Sky: page side (scroll, section anchors, captions, star names, wishes) | [`src/components/Sky.astro`](src/components/Sky.astro) |
-| Sky: atmosphere colors, drawing, twinkle, scroll dimming, shooting-star rate, wishes | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
+| Sky: page side (picks the dome or the journey, scroll, section anchors, captions, star names, wishes) | [`src/components/Sky.astro`](src/components/Sky.astro) |
+| Sky, the dome: atmosphere colors, drawing, twinkle, scroll dimming, shooting-star rate, wishes | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
+| Galaxy journey, page side: stops, scroll track, plane choreography, the camera, nav and focus | [`src/scripts/journey.ts`](src/scripts/journey.ts) |
+| Galaxy journey, sky side: star field, galaxies, warp, takeoff and landing | [`src/scripts/sky/journey.ts`](src/scripts/sky/journey.ts) (same worker) |
+| Galaxy portraits (Andromeda, Triangulum, Whirlpool, Sombrero, Milky Way) | [`src/scripts/sky/galaxies.ts`](src/scripts/sky/galaxies.ts) |
 | Sky: Amman, sidereal time, Sun, planets, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
 | Sky: catalog arrays, the camera and its lens, the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
 | Sky: shooting stars (one shared direction, tapered trails) | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
@@ -93,6 +100,18 @@ nothing deploys from a feature branch.
 | CI and deploy | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
 
 ## 3. How the sky works
+
+The sky has two modes, chosen once per page load:
+
+| Mode | Where | Section |
+| --- | --- | --- |
+| **The galaxy journey:** scrolling flies forward through space, past real galaxies, with the content on planes along the route | Profile pages on windows at least 900 × 560 px with motion allowed | §3b |
+| **The dome:** the real sky over Amman, turning with scroll | Phones, short windows, reduced motion, article pages | §3a |
+
+The inline script in `Base.astro` sets `html.journey` before first paint when the profile page
+qualifies; `Sky.astro` reads that class and tells the worker which renderer to build.
+
+### 3a. The dome
 
 The page is a journey through the real sky over Amman, seen as a dome. The sky holds every
 naked-eye star (to magnitude 6), the naked-eye planets and the Milky Way, positioned for right now (or 21:00 tonight
@@ -130,7 +149,7 @@ worker ── "view" (what is in the center), "hover" (star or planet name) ─�
 click on empty sky ─► worker: meteors.launch(x, y)
 ```
 
-#### 3. (rendered)
+#### 3a. (rendered)
 
 ```mermaid
 %%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
@@ -168,6 +187,83 @@ rotation span is `DOME_SPAN` and its glide is the `4.5` in the progress easing; 
 rate is the `rate` line (`0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5`); meteor lifetime and speed
 are in `meteors.ts::spawn`, and the shared direction is `DX`/`DY`.
 
+### 3b. The galaxy journey
+
+Scrolling flies a camera straight ahead through space. It only ever moves forward: no pans, no
+rolls, no zoom. That is the point of this mode. In the dome, a fast scroll swung the camera between
+five directions and zoom levels, which read as disorganized; here a fast scroll is just faster
+flight.
+
+Every `[data-stop]` element in `ProfilePage.astro` is a **stop**: the hero, each section title
+(`data-stop="title"`) and each block of content (`data-stop="panel"`). Stops are fixed to the
+screen and moved with CSS 3D transforms; the sections stay in the document only as the scroll
+track, so anchors, the header highlight, search engines and screen readers see the normal page.
+Every stop does the same three things:
+
+| Phase | Plane | Camera |
+| --- | --- | --- |
+| **Arrive** (from 4 focal lengths away) | Content planes come in turned like a wall on their side of the route, alternating left and right, swing flat into the center and "render" in from top to bottom. Titles come straight down the middle and assemble from points of starlight. | Glides forward one `STRIDE` |
+| **Hold** (±`HOLD` = 0.2 stop) | Flat, centered, no transform, fully crisp: where reading happens. Only this plane is visible. | Almost still (`CREEP`) |
+| **Depart** | Peels off to its side and fades (titles rise overhead) | Moves on |
+
+| Section | Heads for (`sky/journey.ts::DESTINATIONS`) | Space tinted |
+| --- | --- | --- |
+| `hero` | Takeoff: the real sky over Amman straight up; the stars stream past as the atmosphere falls away, and stop twinkling | Night over Amman |
+| `about` | Andromeda, al-Sufi's "little cloud" (2.5 million light-years), with M32 and M110 | Violet |
+| `experience` | The Triangulum galaxy (2.7 million) | Teal |
+| `projects` | The Whirlpool and its companion NGC 5195 (about 30 million) | Magenta |
+| `education` | The Sombrero, its dust lane edge-on (about 30 million) | Amber |
+| `contact` | Home: the Milky Way, then dawn over Amman with shooting stars, as in the dome | Dawn |
+
+Each galaxy is far behind its section's title, grows as the section is read, and is passed close
+by on the way to the next title. The caption at the bottom names it.
+
+```text
+scroll ─► journey.ts: routeAt(scrollY) = position in stops (u)
+            │  eased (LAG 0.14 s)
+            ├─► place(stop, arrive, depart): CSS perspective(F) transform, opacity, --r, --a
+            │       (F = 0.72 × viewport width, the same focal length the stars use)
+            └─► "camera" message per frame: z = STRIDE·F·stairs(u), speed, u, landing, skyline y
+                     ▼
+worker: sky/journey.ts ─► background (night → space → dawn) · tint per section
+                       ─► galaxies (sprites painted once, galaxies.ts) · star field (real + generated,
+                          recycled) · warp streaks only when fast · shooting stars (hero, dawn)
+```
+
+#### 3b. (rendered)
+
+```mermaid
+%%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
+flowchart LR
+  scroll([scroll]) --> u[routeAt: position in stops]
+  u --> eased[eased u]
+  eased --> place[place: CSS 3D per stop]
+  eased --> cam[camera z = STRIDE · F · stairs u]
+  place --> planes[(text planes)]
+  cam -- "camera message" --> worker[sky/journey.ts]
+  worker --> sky[(stars, galaxies, warp, dawn)]
+  planes -. "same focal length F" .- sky
+```
+
+Read it as: one eased number drives both the text planes and the stars, through one focal
+length, so text and space move as one. Nothing on the canvas depends on where the text is.
+
+> **Guaranteed:** while a stop holds, its plane has no mask and no transform (crisp text), unless
+> it is too big for the screen and pushed back to fit, and no other plane is visible. Warp streaks
+> fade in only above 6 focal lengths of travel a second (the `warp` line), so an unhurried move
+> between stops barely streaks and nothing streaks while a stop holds.
+> **Prohibited:** camera pans, rolls or zooms between sections (the reason this mode exists), and
+> anything that accumulates behind text (§7).
+> **Focus and links:** keyboard focus moving into a plane flies to its stop, in-page links fly to
+> the section's title, and a reload returns to the same place.
+
+**Tunables** (`src/scripts/journey.ts` unless noted): `HOLD` (hold width), `STRIDE` (camera travel
+and arrival distance per stop), `PACE` (scroll per stop; titles use 0.65 of it), `LAG` (camera
+easing), `CREEP`; the arrive and depart paths are in `place`. In `src/scripts/sky/journey.ts`:
+`DESTINATIONS` (galaxy, side, tint), the galaxy offsets in `placeGalaxies`, warp is `EXPOSURE`,
+`MAX_STREAK` and the `warp` line, and the sky colors are `NIGHT`, `SPACE`, `PREDAWN`, `DAWN`. Each
+galaxy's look is its branch in `galaxies.ts::paintGalaxy`.
+
 ## 4. Change recipes
 
 **Update a fact (role, date, project, number):**
@@ -188,11 +284,20 @@ full-width card.
 3. Flip it to `draft: false` to publish. `/blog/` and the sitemap entry appear automatically with
    the first published post.
 
-**Change the sky:** see the tunables in §3. Then check, in this order:
+**Add a block of content to the journey:** put `data-stop="panel"` on its outermost element (or
+`data-stop="title"` on a section's `<h2>`), inside a `<section id>` in `main`. Keep it under one
+screen tall at 1440 × 800; a taller plane is pushed back until it fits, which shrinks its text. A
+section with stops but no entry in `sky/journey.ts::DESTINATIONS` simply has no galaxy. Verify by
+scrolling to it in `npm run dev` on a wide window: it should hold flat and centered, with nothing
+else on screen.
+
+**Change the sky:** see the tunables in §3a and §3b. Then check, in this order:
 1. Reduced motion (macOS: System Settings → Accessibility → Display → Reduce motion): a still
    sky with no shooting stars.
 2. An article page in `npm run dev`: a dimmer sky.
 3. A scroll from top to bottom: text stays easy to read, and shooting stars build at the end.
+4. A narrow window (under 900 px) for the dome, and a wide one for the journey, including a fast
+   flick across several stops: planes dim, stars streak briefly, and the stop you land on is crisp.
 
 **Add a named star:** add `{ en, origin, ar }` to `starNames` in `src/data/sky-names.ts`, where
 `en` is the catalog's proper name. Regenerate the catalog with the commands at the top of
@@ -253,7 +358,23 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Unlike what you'd expect, east is on the left** of the sky. The projection shows the sky as you
   see it lying on your back with north at the top, the way an astrolabe plate does.
 - **Star labels only appear over empty sky** (`Sky.astro`, the `content` selector), so hovering
-  text never pops a label in the middle of reading.
+  text never pops a label in the middle of reading. The journey has no star labels; its stars
+  move.
+- ⚠ **Journey mode is decided in two places that must agree:** the inline script in
+  `Base.astro` (before first paint, so the layout never jumps) and `journey.ts::JOURNEY_QUERY`
+  (which reloads the page when the window crosses it, to switch modes cleanly).
+- ⚠ **Journey planes are `position: fixed`.** A `transform`, `filter`, `contain` or `will-change`
+  on any ancestor of a `[data-stop]` (a section, `.container`, `.projects`, the `<ol>`) makes it
+  fixed to that ancestor instead of the screen, and the plane vanishes or jumps. The sections'
+  heights are set inline by `journey.ts::layout`; CSS heights on them are overridden.
+- **Unlike what you'd expect, journey titles are rebuilt by script** (`journey.ts::spell`): the
+  `<h2>` holds a screen-reader copy of the text plus one span per letter (per word in Arabic,
+  whose letters join) for the starlight assembly. Edit the title in `i18n.ts`, never in the DOM.
+- **The stars and the text share one focal length:** `F = 0.72 × viewport width`, used both as the
+  CSS `perspective()` of every plane and by the star field (sent in the `route` message). Change
+  it in `journey.ts::layout` only.
+- **The project pairs** (`.project-pair`) exist only for the journey, where each pair is one
+  stop; elsewhere they are `display: contents`, so the projects grid is unchanged.
 
 ## 7. Decisions
 
@@ -270,8 +391,16 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Root user site.** The repo was renamed from `portfolio` to `EzzoHamdan.github.io`, because
   `robots.txt`, the sitemap and `llms.txt` only work at the domain root. A custom domain is
   `[planned]` and needs no code change beyond `site.url` and a `public/CNAME` file.
-- **"Sky over Amman" redesign:** this branch. The neon design is preserved on `astro-rebuild` as
-  the fallback.
+- **"Sky over Amman" redesign:** on `sky-over-amman`. The neon design is preserved on
+  `astro-rebuild` as the fallback.
+- **The galaxy journey** (this branch, an experiment). The owner asked for a scroll that travels
+  through space with tilted text that is part of the journey, after finding the dome's zooming and
+  tilting between sections disorganized on fast scrolls. The camera only moves forward, every stop
+  follows the same arrive, hold, depart path, and only one plane shows while reading. The dome
+  stays for phones and reduced motion, where 3D planes would be cramped or unwelcome.
+- **Warp streaks are the one streak allowed, and only in flight.** They appear only on a fast
+  scroll, are short (`MAX_STREAK` 60 px) and vanish when the camera slows, so they never sit behind
+  text being read. This is the line the long-exposure trails (below) crossed.
 - **The sky is real, not decorative noise:** positions come from sidereal time at Amman, so a
   visitor at 21:00 sees roughly what is overhead in Amman at 21:00. Verified on 2026-10-12 at
   20:19: Polaris at 32.1° altitude (equal to Amman's latitude) and Vega at 58° in the WNW.
