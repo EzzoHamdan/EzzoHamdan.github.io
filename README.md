@@ -204,9 +204,9 @@ Every stop does the same three things:
 
 | Phase | Plane | Camera |
 | --- | --- | --- |
-| **Arrive** (from 4 focal lengths away) | Content planes come in turned like a wall on their side of the route, alternating left and right, swing flat into the center and "render" in from top to bottom. Titles come straight down the middle and assemble from points of starlight. | Glides forward one `STRIDE` |
-| **Hold** (±`HOLD` = 0.2 stop) | Flat, centered, no transform, fully crisp: where reading happens. Only this plane is visible. | Almost still (`CREEP`) |
-| **Depart** | Peels off to its side and fades (titles rise overhead). The hero instead sinks away below and tilts like the ground at takeoff, over a longer first leg (`WEIGHT.hero`) | Moves on |
+| **Arrive** (from 4 focal lengths away) | A content stop's parts are fixed in space beside the route (below); perspective alone grows them and carries them outward to their sides, and cards "render" in from top to bottom. Titles come straight down the middle and assemble from points of starlight. | Glides forward one `STRIDE` |
+| **Hold** (±`HOLD` = 0.2 stop) | Still: the card on the stop's side, turned 10° toward the route, the visuals on the other side. Nothing else is visible. Titles are flat and centered. | Almost still (`CREEP`; the text ignores it) |
+| **Depart** | The parts pass out of view on their sides, nearest first, as the camera goes on. Titles rise overhead; the hero sinks away below and tilts like the ground at takeoff, over a longer first leg (`WEIGHT.hero`) | Moves on |
 
 The galaxies come **farthest first**, so the whole flight is a return to Earth (owner's request):
 
@@ -225,14 +225,17 @@ by on the way to the next title. The caption at the bottom names it and gives th
 Earth, which counts down on a log scale between places (`journey.ts::distanceAt`, units from
 millions of light-years down to km in `formatDistance`) and holds still while a stop is read.
 
-**Stops as compositions.** A content stop is not one slab: its text sits on dark glass cards with
-brass corner marks, and lighter things float around them. Each role and the degree have their
-organization's logo on a small lit "moon" (`.moon`, from the logos in `src/assets/logos`); the
-about facts and the certificates are floating chips; the House of Wisdom diagram floats free;
-project pairs are staggered. Roles show two highlights per group until "Show all highlights"
-(`.more`, toggled in `journey.ts`). Everything leans with the mouse (`--px`, `--py` on `<main>`),
-nearer things more, and the sky leans the same way (`lean` message). Cards lift a little on
-hover. Only decorations bob; text never tilts or moves on its own.
+**Stops as places in space** (`journey.ts::placeParts`, owner's request). A content stop is a
+see-through frame whose `[data-part]`s are fixed at points beside the route, given in
+`ProfilePage.astro` as `data-at="x,y,depth"` (x in viewport widths toward the stop's side, y in
+viewport heights, extra depth in focal lengths). The card goes on the stop's side; visuals go on
+the other side, farther away, so they move with real parallax: each organization's logo on a
+planet in its brand color (`BRAND`) ringed by a full orbit, the House of Wisdom diagram, the
+certificates, and four "In short" facts floating on their own (the other facts are hidden in the
+journey but stay in the page). Roles show two highlights per group until "Show all highlights"
+(`.more`). The mouse leans the camera a little (`lean` message), so near parts shift more than
+far ones and the sky leans the same way. Cards lift a little on hover. Only visuals bob; text
+never moves on its own.
 
 **Space never freezes.** While a stop holds, the camera keeps a slow drift (`sky/journey.ts`, `dz`,
 `dx`, `dy`, `breath`): near stars shift more than far ones and galaxies swell slightly. In the
@@ -283,9 +286,9 @@ flowchart LR
 Read it as: one eased number drives both the text planes and the stars, through one focal
 length, so text and space move as one. Nothing on the canvas depends on where the text is.
 
-> **Guaranteed:** while a stop holds, its plane has no mask and no transform (crisp text), unless
-> it is too big for the screen and pushed back to fit, and no other plane is visible. Cards inside
-> it only shift by a few pixels with the mouse; they never rotate. Warp streaks
+> **Guaranteed:** while a stop holds, its parts are still (unless the mouse leans the camera) and
+> no other stop is visible. Cards are turned 10° toward the route and have no mask once the stop
+> holds; a part too tall for the screen is pushed back until it fits. Warp streaks
 > fade in only above 6 focal lengths of travel a second (the `warp` line), so an unhurried move
 > between stops barely streaks and nothing streaks while a stop holds.
 > **Prohibited:** camera pans, rolls or zooms between sections (the reason this mode exists), and
@@ -427,6 +430,14 @@ if the spelling differs (it's "Shedar", not "Schedar").
   computed once when the sky starts (`sky/journey.ts`, `sunrise`), so the story always lands at
   dawn whatever the hour. The globe is painted 48 rows a frame from then on, so it never stalls
   the sky.
+- ⚠ **A part's position comes from `data-at`, not from the page's layout.** In the journey every
+  `[data-part]` is absolutely centered in its stop's frame and moved by a transform; margins and
+  grid placement on it do nothing there. Its width is set in the galaxy journey block of
+  `global.css`. A wrapper that is `display: contents` elsewhere (`.role-mark`, `.council-wrap`)
+  must be given a box in the journey, or its child escapes placement and fading.
+- **Title glyphs carry extra padding** (`.glyph`, `padding-block` with matching negative margins)
+  because their starlit fill (`background-clip: text`) only paints inside each glyph's box;
+  without it descenders such as the g in "Background" were cut off.
 - **Two logos contain Arabic script** (IIAB and AAU) and show on the English page too. They are
   images, so `npm run check` (which checks text) does not flag them; the owner wanted the logos.
 - **The IIAB mark sits in a wide band inside a square image,** so its moon gets `.moon.wide`
@@ -469,6 +480,9 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Farthest galaxy first** (2026-10-12, owner's request): the first order (Andromeda outward to
   the Sombrero) read as flying away from home. Distances from McQuinn et al. 2016 for the Sombrero
   (31 million light-years) and the Whirlpool (28 million).
+- **Content beside the route, not in the middle** (2026-10-12, owner's request): stops used to
+  slide each plane to the center and peel it off; now their parts are fixed in space on the
+  sides and pass out of view naturally, which reads as travel rather than as cards being shown.
 - **Simpler, lighter stops** (2026-10-12, owner's request): the dense cards became compositions
   with logos, two highlights per group up front, and gentle mouse parallax. Text stays still on
   purpose; only decorations float.
