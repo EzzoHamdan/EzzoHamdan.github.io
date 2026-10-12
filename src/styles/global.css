@@ -1219,13 +1219,14 @@ section h2 {
   filter: drop-shadow(0 0 5px rgba(190, 205, 255, 0.3));
 }
 
-/* Content planes: dark glass with brass corner marks, like a reticle, so a tilted plane reads as
-   a plane. --r reveals it from top to bottom as it arrives ("rendering"). */
+/* Content stops are compositions, not slabs. Text sits on dark glass cards with brass corner marks,
+   like a reticle; around them float lighter things: logo moons, fact and certificate chips, the
+   council diagram. Everything answers the mouse with a little parallax (--px and --py on <main>,
+   -1..1, from journey.ts), nearer things more. Cards only shift a few pixels and never tilt, so
+   their text stays crisp; only the decorations bob. --r reveals a stop from top to bottom as it
+   arrives ("rendering"). */
 .journey [data-stop='panel'] {
   width: min(var(--container) - 2 * var(--gutter), 100vw - 2 * var(--gutter));
-  padding: clamp(1.5rem, 3vw, 2.75rem);
-  border-radius: 14px;
-  background: radial-gradient(130% 120% at 50% 45%, rgba(7, 11, 26, 0.84), rgba(7, 11, 26, 0.64) 70%, rgba(7, 11, 26, 0.4));
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--r, 1) * 125% - 25%), transparent calc(var(--r, 1) * 125%));
   mask-image: linear-gradient(to bottom, #000 calc(var(--r, 1) * 125% - 25%), transparent calc(var(--r, 1) * 125%));
 }
@@ -1235,7 +1236,17 @@ section h2 {
   mask-image: none;
 }
 
-.journey [data-stop='panel']::before {
+.journey :is(.about-text, .role-body, .project.featured .project-text, .project-pair .project, .degree) {
+  position: relative;
+  padding: clamp(1.25rem, 2.4vw, 2.25rem);
+  border-radius: 14px;
+  background: radial-gradient(130% 120% at 50% 40%, rgba(7, 11, 26, 0.88), rgba(7, 11, 26, 0.72));
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+  transform: translate3d(calc(var(--px, 0) * 5px), calc(var(--py, 0) * 4px), 0);
+  transition: box-shadow 0.5s var(--ease), scale 0.5s var(--ease);
+}
+
+.journey :is(.about-text, .role-body, .project.featured .project-text, .project-pair .project, .degree)::before {
   --mark: rgba(201, 161, 91, 0.6);
   content: '';
   position: absolute;
@@ -1243,38 +1254,253 @@ section h2 {
   border-radius: inherit;
   pointer-events: none;
   background:
-    linear-gradient(var(--mark), var(--mark)) top left / 22px 1px no-repeat,
-    linear-gradient(var(--mark), var(--mark)) top left / 1px 22px no-repeat,
-    linear-gradient(var(--mark), var(--mark)) top right / 22px 1px no-repeat,
-    linear-gradient(var(--mark), var(--mark)) top right / 1px 22px no-repeat,
-    linear-gradient(var(--mark), var(--mark)) bottom left / 22px 1px no-repeat,
-    linear-gradient(var(--mark), var(--mark)) bottom left / 1px 22px no-repeat,
-    linear-gradient(var(--mark), var(--mark)) bottom right / 22px 1px no-repeat,
-    linear-gradient(var(--mark), var(--mark)) bottom right / 1px 22px no-repeat;
+    linear-gradient(var(--mark), var(--mark)) top left / 20px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top left / 1px 20px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 20px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 1px 20px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 20px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 1px 20px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 20px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 1px 20px no-repeat;
+  transition: opacity 0.5s var(--ease);
+  opacity: 0.8;
 }
 
+/* A card being read lifts a little toward the reader */
+.journey .is-settled :is(.about-text, .role-body, .project.featured .project-text, .project-pair .project, .degree):hover {
+  scale: 1.012;
+  box-shadow: 0 0 0 1px rgba(201, 161, 91, 0.22), 0 26px 70px rgba(0, 0, 0, 0.45);
+}
+
+.journey .is-settled :is(.about-text, .role-body, .project.featured .project-text, .project-pair .project, .degree):hover::before {
+  opacity: 1;
+}
+
+@keyframes bob {
+  50% {
+    translate: 0 -9px;
+  }
+}
+
+/* Logo moons: each organization's mark on a small lit sphere, with a tilted orbit around it */
+.moon {
+  display: none;
+}
+
+.journey .moon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(120px, 12vw, 190px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffffff, #e9ecf4 55%, #c4cadb 100%);
+  box-shadow:
+    inset -14px -18px 36px rgba(30, 40, 80, 0.32),
+    0 0 0 1px rgba(255, 255, 255, 0.35),
+    0 0 46px 4px rgba(150, 180, 255, 0.22);
+  transform: translate3d(calc(var(--px, 0) * 20px), calc(var(--py, 0) * 15px), 0);
+  animation: bob 8s ease-in-out infinite;
+}
+
+.journey .moon::after {
+  content: '';
+  position: absolute;
+  inset: -12% -34%;
+  border: 1px solid rgba(201, 161, 91, 0.32);
+  border-radius: 50%;
+  rotate: -16deg;
+  pointer-events: none;
+}
+
+.journey .moon img {
+  width: 64%;
+  height: auto;
+  max-height: 64%;
+  object-fit: contain;
+}
+
+.journey .moon.wide img {
+  width: 92%;
+  max-height: 92%;
+}
+
+/* About: the story on a card, the facts as a mosaic of small floating chips */
+.journey #about .two-col {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2rem, 4vw, 3.5rem);
+  align-items: center;
+}
+
+.journey .facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  border-top: 0;
+}
+
+.journey :is(.facts > div, .certs > li) {
+  display: block;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid rgba(233, 237, 248, 0.1);
+  border-radius: 10px;
+  background: rgba(7, 11, 26, 0.74);
+  transform: translate3d(calc(var(--px, 0) * var(--depth, 10px)), calc(var(--py, 0) * var(--depth, 10px) * 0.7), 0);
+  animation: bob 10s ease-in-out infinite;
+  transition: border-color 0.4s var(--ease);
+}
+
+.journey .is-settled :is(.facts > div, .certs > li):hover {
+  border-color: rgba(201, 161, 91, 0.45);
+}
+
+/* Each chip at its own depth and in its own phase, so the mosaic never moves as one block */
+.journey :is(.facts > div, .certs > li):nth-child(3n + 1) { --depth: 14px; animation-delay: -1.5s; }
+.journey :is(.facts > div, .certs > li):nth-child(3n + 2) { --depth: 8px; animation-delay: -4.5s; }
+.journey :is(.facts > div, .certs > li):nth-child(3n) { --depth: 18px; animation-delay: -7.5s; }
+.journey .facts > div:nth-child(even) { margin-top: 1.1rem; margin-bottom: -1.1rem; }
+
+.journey .facts dt {
+  font-size: var(--tiny);
+  margin-bottom: 0.15rem;
+}
+
+.journey .facts dd {
+  color: var(--starlight);
+}
+
+/* Experience: a card beside the organization's moon and its dates, sides alternating */
 .journey .role[data-stop] {
-  width: min(1000px, 100vw - 2 * var(--gutter));
+  width: min(1060px, 100vw - 2 * var(--gutter));
+  grid-template-columns: clamp(150px, 15vw, 230px) minmax(0, 1fr);
+  grid-template-areas: 'moon body' 'when body';
+  grid-template-rows: auto auto;
+  column-gap: clamp(2rem, 5vw, 4.5rem);
+  align-content: center;
 }
 
+.journey .role:nth-child(even) {
+  grid-template-columns: minmax(0, 1fr) clamp(150px, 15vw, 230px);
+  grid-template-areas: 'body moon' 'body when';
+}
+
+.journey .role .moon {
+  grid-area: moon;
+  align-self: end;
+}
+
+.journey .role .role-when {
+  grid-area: when;
+  align-self: start;
+  padding-top: 1.6rem;
+  text-align: center;
+  font-family: var(--font-heading);
+  font-size: var(--step-1);
+  color: var(--starlight);
+}
+
+.journey .role-star,
 .journey .constellation::before {
   display: none;
+}
+
+.journey .role .role-body {
+  grid-area: body;
+}
+
+/* Two highlights per group until the reader asks for all of them */
+.journey .role:not(.is-open) .extra {
+  display: none;
+}
+
+.more {
+  display: none;
+}
+
+.journey .more {
+  display: inline-block;
+  margin-top: 0.9rem;
+  padding: 0;
+  font: inherit;
+  font-size: var(--small);
+  color: var(--brass);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid rgba(201, 161, 91, 0.35);
+  cursor: pointer;
+}
+
+.journey .more:hover {
+  border-bottom-color: var(--brass);
+}
+
+/* Projects: the featured card with its diagram floating free; the others as a staggered pair */
+.journey .project.featured {
+  padding: 0;
+  margin: auto;
+  border: 0;
+  background: none;
+  gap: clamp(2rem, 5vw, 4rem);
+}
+
+.journey .project.featured .council {
+  transform: translate3d(calc(var(--px, 0) * 18px), calc(var(--py, 0) * 14px), 0);
+  animation: bob 9s ease-in-out infinite;
 }
 
 .journey .project-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 clamp(2rem, 5vw, 4rem);
+  gap: 0 clamp(1.5rem, 3.5vw, 3rem);
+  align-items: start;
 }
 
 .journey .project-pair .project {
-  padding-block: 0;
   border-top: 0;
+}
+
+.journey .project-pair .project:nth-child(2) {
+  margin-top: 3.5rem;
+  transform: translate3d(calc(var(--px, 0) * 10px), calc(var(--py, 0) * 8px), 0);
 }
 
 .journey .project-pair.single {
   grid-template-columns: minmax(0, 1fr);
   width: min(600px, 100vw - 2 * var(--gutter));
+}
+
+/* Education: the university's moon, the degree card, and the certificates as chips */
+.journey #education .two-col {
+  grid-template-columns: clamp(120px, 12vw, 180px) minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 3.5vw, 3rem);
+  align-items: center;
+}
+
+.journey .certs-title {
+  margin-top: 0;
+}
+
+.journey .certs {
+  display: grid;
+  gap: 0.6rem;
+  border-top: 0;
+}
+
+/* Small logos beside facts, on light plates so every mark reads on the night sky */
+.fact-logos {
+  display: inline-flex;
+  gap: 0.3rem;
+  margin-inline-end: 0.45rem;
+  vertical-align: -0.45em;
+}
+
+.fact-logos img {
+  width: auto;
+  height: 22px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: #eef1f7;
 }
 
 /* ──────────────────────────────────────

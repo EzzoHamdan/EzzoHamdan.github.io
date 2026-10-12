@@ -31,6 +31,8 @@ export const ui = {
       contact: 'Contact',
     },
     since: 'since',
+    showAll: 'Show all highlights',
+    showFewer: 'Show fewer',
     present: 'Present',
     contact: {
       title: "Let's build something meaningful",
@@ -74,6 +76,8 @@ export const ui = {
       contact: 'التواصل',
     },
     since: 'منذ',
+    showAll: 'عرض كل الإنجازات',
+    showFewer: 'عرض أقل',
     present: 'حتى الآن',
     contact: {
       title: 'لنصنع معًا شيئًا ذا قيمة',

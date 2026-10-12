@@ -1,4 +1,5 @@
 ---
+import { Image } from 'astro:assets';
 import Base from '../layouts/Base.astro';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
@@ -36,6 +37,10 @@ const comma = lang === 'en' ? ', ' : '، ';
 const orgNames = (keys: (keyof typeof orgs)[]) => keys.map((k) => t(orgs[k].name, lang)).join(and);
 const current = experience.find((r) => r.end === null)!;
 const previous = experience.filter((r) => r.end !== null);
+// On wide screens (the galaxy journey) a role shows two highlights per group until expanded
+const SHOWN = 2;
+const hidden = (role: (typeof experience)[number]) =>
+  (role.groups ?? []).reduce((n, g) => n + Math.max(0, t(g.bullets, lang).length - SHOWN), 0);
 // The featured project, then the rest in pairs: on wide screens each pair is one stop of the journey
 const featured = projects.filter((p) => p.featured);
 const rest = projects.filter((p) => !p.featured);
@@ -95,9 +100,27 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
           <dl class="facts">
             <div><dt>{s.facts.role}</dt><dd>{t(person.role, lang)}</dd></div>
             <div><dt>{s.facts.basedIn}</dt><dd>{s.location}</dd></div>
-            <div><dt>{s.facts.current}</dt><dd>{t(current.title, lang)}, {s.since} {formatMonth(current.start, lang)}</dd></div>
-            <div><dt>{s.facts.previously}</dt><dd>{previous.map((r) => t(orgs[r.orgs[0]].name, lang)).join(comma)}</dd></div>
-            <div><dt>{s.facts.education}</dt><dd>{t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})</dd></div>
+            <div>
+              <dt>{s.facts.current}</dt>
+              <dd>
+                <span class="fact-logos" aria-hidden="true"><Image src={current.logo} alt="" width={64} /></span>
+                {t(current.title, lang)}, {s.since} {formatMonth(current.start, lang)}
+              </dd>
+            </div>
+            <div>
+              <dt>{s.facts.previously}</dt>
+              <dd>
+                <span class="fact-logos" aria-hidden="true">{previous.map((r) => <Image src={r.logo} alt="" width={64} />)}</span>
+                {previous.map((r) => t(orgs[r.orgs[0]].name, lang)).join(comma)}
+              </dd>
+            </div>
+            <div>
+              <dt>{s.facts.education}</dt>
+              <dd>
+                <span class="fact-logos" aria-hidden="true"><Image src={education.logo} alt="" width={64} /></span>
+                {t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})
+              </dd>
+            </div>
             <div><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).slice(0, 4).join(comma)}</dd></div>
             <div><dt>{s.facts.languages}</dt><dd>{t(person.languages, lang)}</dd></div>
             <div><dt>{s.facts.openTo}</dt><dd>{t(person.openTo, lang)}</dd></div>
@@ -114,6 +137,10 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
           {
             experience.map((role) => (
               <li class="role" data-stop="panel">
+                {/* The bank's mark is a wide band inside a square image, so it gets more of the moon */}
+                <figure class:list={['moon', { wide: role.id === 'iiab' }]} aria-hidden="true">
+                  <Image src={role.logo} alt="" width={240} />
+                </figure>
                 <time class="role-when" datetime={role.start}>
                   {formatPeriod(role.start, role.end, lang)}
                 </time>
@@ -126,10 +153,15 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
                     <div class="role-group">
                       {g.title && <h4>{t(g.title, lang)}</h4>}
                       <ul class="bullets">
-                        {t(g.bullets, lang).map((b) => <li>{b}</li>)}
+                        {t(g.bullets, lang).map((b, i) => <li class:list={{ extra: i >= SHOWN }}>{b}</li>)}
                       </ul>
                     </div>
                   ))}
+                  {hidden(role) > 0 && (
+                    <button class="more" type="button" aria-expanded="false" data-less={s.showFewer}>
+                      {s.showAll}
+                    </button>
+                  )}
                   <ul class="tags">
                     {role.tags.map((x) => <li>{tag(x, lang)}</li>)}
                   </ul>
@@ -181,6 +213,7 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
       <div class="container">
         <h2 id="education-title" data-stop="title">{s.sections.education.title}</h2>
         <div class="two-col" data-stop="panel">
+          <figure class="moon" aria-hidden="true"><Image src={education.logo} alt="" width={240} /></figure>
           <article class="degree">
             <h3>{t(education.degree, lang)}</h3>
             <p class="role-org">{t(orgs[education.org].name, lang)}, {education.start} – {education.end}</p>

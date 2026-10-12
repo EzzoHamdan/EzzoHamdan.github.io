@@ -588,6 +588,44 @@ export function startJourney() {
     history.pushState(null, '', `#${id}`);
     flyTo(y);
   });
+  // A role's full list of highlights, on request (two per group show until then)
+  document.addEventListener('click', (e) => {
+    const button = (e.target as Element).closest?.('.more') as HTMLButtonElement | null;
+    if (!button) return;
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(open));
+    button.closest('.role')?.classList.toggle('is-open', open);
+    const other = button.dataset.less ?? '';
+    button.dataset.less = button.textContent?.trim() ?? '';
+    button.textContent = other;
+  });
+
+  // The mouse leans the scene a little: --px and --py (-1..1), eased, drive the parallax of cards,
+  // moons and chips in CSS, and the sky leans the same way
+  let px = 0, py = 0, tx = 0, ty = 0, leaning = false;
+  const lean = () => {
+    px += (tx - px) * 0.08;
+    py += (ty - py) * 0.08;
+    main.style.setProperty('--px', px.toFixed(3));
+    main.style.setProperty('--py', py.toFixed(3));
+    sink?.({ type: 'lean', x: px, y: py });
+    if (Math.abs(tx - px) + Math.abs(ty - py) > 0.002) requestAnimationFrame(lean);
+    else leaning = false;
+  };
+  addEventListener(
+    'pointermove',
+    (e) => {
+      if (e.pointerType !== 'mouse') return;
+      tx = (e.clientX / innerWidth) * 2 - 1;
+      ty = (e.clientY / innerHeight) * 2 - 1;
+      if (!leaning) {
+        leaning = true;
+        requestAnimationFrame(lean);
+      }
+    },
+    { passive: true },
+  );
+
   // Keyboard focus moving into a plane that is not on screen brings it there
   document.addEventListener('focusin', (e) => {
     const stop = (e.target as Element).closest?.('[data-stop]');

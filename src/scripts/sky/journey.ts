@@ -53,6 +53,8 @@ export type JourneyMessage =
    * skyline's far hills are.
    */
   | { type: 'camera'; z: number; speed: number; u: number; home: number; end: number; horizonY: number }
+  /** Where the mouse leans the view, -1..1 each way, eased by the page. */
+  | { type: 'lean'; x: number; y: number }
   | { type: 'motion'; reduced: boolean }
   | { type: 'visible'; visible: boolean }
   | { type: 'wish'; x: number; y: number };
@@ -163,6 +165,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   // The camera never stops completely: a slow drift (depth dz, across dx and dy), so near stars
   // shift more than far ones and galaxies swell a little, even while a stop holds still
   let dz = 0, dx = 0, dy = 0, breath = 1, clock = 0, orbitClock = 0, lastDraw = 0;
+  // The mouse's lean, which moves the camera a little the same way as the drift
+  let leanX = 0, leanY = 0, leaned = false;
   let galaxies: Galaxy[] = [];
 
   // The star field: position across the view (world units), depth when the camera is at 0, and
@@ -534,13 +538,14 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const drift = reduced ? 0 : (1 - air) * (1 - dawn);
     const T = 2 * Math.PI * clock;
     dz = drift * 0.1 * F * Math.sin(T / 16);
-    dx = drift * 0.012 * w * Math.sin(T / 21);
-    dy = drift * 0.009 * h * Math.sin(T / 27 + 1);
+    dx = drift * (0.012 * w * Math.sin(T / 21) + 0.02 * w * leanX);
+    dy = drift * (0.009 * h * Math.sin(T / 27 + 1) + 0.016 * h * leanY);
     breath = 1 + drift * 0.015 * Math.sin(T / 16);
     const L = homeLevel(home);
     if (L > 0.3 && L < 2.5) orbitClock += dt;
 
-    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done;
+    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done || leaned;
+    leaned = false;
     const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
     if (drift < 0.01 && !moving && key === drawnKey) return;
     // While only the slow drift moves, half the frame rate is plenty
@@ -639,6 +644,11 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
           home = msg.home;
           end = msg.end;
           horizonY = msg.horizonY;
+          return;
+        case 'lean':
+          leanX = msg.x;
+          leanY = msg.y;
+          leaned = true;
           return;
         case 'motion':
           reduced = msg.reduced;
