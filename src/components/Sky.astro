@@ -4,8 +4,10 @@
 
 <script>
   import type { SkyEvent, SkyMessage } from '../scripts/sky/renderer';
+  import type { JourneyMessage } from '../scripts/sky/journey';
   import { planetNames, showers, starNames } from '../data/sky-names';
   import { PLANETS, night } from '../scripts/sky/astro';
+  import { startJourney } from '../scripts/journey';
 
   const canvas = document.getElementById('sky') as HTMLCanvasElement;
   const starLabel = document.getElementById('star-label') as HTMLElement;
@@ -13,6 +15,10 @@
   const calm = document.body.dataset.sky === 'calm';
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const size = () => ({ width: innerWidth, height: innerHeight, dpr: Math.min(devicePixelRatio || 1, 2) });
+  // Wide screens with motion allowed fly through the galaxies (set before first paint in
+  // Base.astro); everywhere else, and for reduced motion, the sky is the turning dome. The page
+  // side of the journey starts right away: it lays out the scroll track.
+  const journey = document.documentElement.classList.contains('journey') ? startJourney() : null;
 
   // What the camera is looking at, as it moves from section to section
   const viewCaption = document.getElementById('sky-view') as HTMLElement;
@@ -76,8 +82,9 @@
     caption.hidden = false;
   }
 
-  async function connect(): Promise<(msg: SkyMessage) => void> {
-    const init = { ...size(), reducedMotion: motion.matches, calm };
+  type Message = SkyMessage | JourneyMessage;
+  async function connect(): Promise<(msg: Message) => void> {
+    const init = { ...size(), reducedMotion: motion.matches, calm, mode: journey ? 'journey' : 'dome' } as const;
     if ('transferControlToOffscreen' in canvas) {
       const worker = new Worker(new URL('../scripts/sky/worker.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<SkyEvent>) => onSkyEvent(event.data);
@@ -85,10 +92,16 @@
       worker.postMessage({ type: 'init', canvas: offscreen, ...init }, [offscreen]);
       return (msg) => worker.postMessage(msg);
     }
+    if (journey) {
+      const { createJourney } = await import('../scripts/sky/journey');
+      const sky = createJourney(canvas);
+      sky.handle({ type: 'init', ...init, mode: 'journey' });
+      return (msg) => sky.handle(msg as JourneyMessage);
+    }
     const { createSky } = await import('../scripts/sky/renderer');
     const sky = createSky(canvas, onSkyEvent);
     sky.handle({ type: 'init', ...init });
-    return (msg) => sky.handle(msg);
+    return (msg) => sky.handle(msg as SkyMessage);
   }
 
   async function start() {
@@ -108,6 +121,34 @@
         post({ type: 'resize', ...next });
       }, 150);
     });
+
+    document.addEventListener('visibilitychange', () => post({ type: 'visible', visible: !document.hidden }));
+    motion.addEventListener('change', () => post({ type: 'motion', reduced: motion.matches }));
+
+    // Hover names and wishes only over empty sky, so reading and links are never interrupted.
+    // Controls and boxes always count as content; text blocks only where their lines actually are,
+    // so the empty space beside a heading is still sky.
+    const solid = 'a, button, input, svg, .card, .project, .site-header';
+    const text = 'p, li, dt, dd, h1, h2, h3, h4, time';
+    const onSky = (e: MouseEvent) => {
+      const el = e.target as Element;
+      if (el.closest?.(solid) || getSelection()?.toString()) return false;
+      const block = el.closest?.(text);
+      if (!block) return true;
+      const range = document.createRange();
+      range.selectNodeContents(block);
+      return ![...range.getClientRects()].some(
+        (r) => e.clientX >= r.left - 6 && e.clientX <= r.right + 6 && e.clientY >= r.top - 4 && e.clientY <= r.bottom + 4,
+      );
+    };
+    if (journey) {
+      journey.attach(post);
+      // Wishes over empty space only; a content plane counts as content all over
+      document.addEventListener('click', (e) => {
+        if (!(e.target as Element).closest?.('[data-stop="panel"]') && onSky(e)) post({ type: 'wish', x: e.clientX, y: e.clientY });
+      });
+      return;
+    }
 
     // Scrolling never moves the stars; it sets how dim the sky is and how many shooting stars fall
     let ticking = false;
@@ -158,22 +199,6 @@
     document.fonts.ready.then(sendScenes);
     new ResizeObserver(() => sendScenes()).observe(document.body);
 
-    // Hover names and wishes only over empty sky, so reading and links are never interrupted.
-    // Controls and boxes always count as content; text blocks only where their lines actually are,
-    // so the empty space beside a heading is still sky.
-    const solid = 'a, button, input, svg, .card, .project, .site-header';
-    const text = 'p, li, dt, dd, h1, h2, h3, h4, time';
-    const onSky = (e: MouseEvent) => {
-      const el = e.target as Element;
-      if (el.closest?.(solid) || getSelection()?.toString()) return false;
-      const block = el.closest?.(text);
-      if (!block) return true;
-      const range = document.createRange();
-      range.selectNodeContents(block);
-      return ![...range.getClientRects()].some(
-        (r) => e.clientX >= r.left - 6 && e.clientX <= r.right + 6 && e.clientY >= r.top - 4 && e.clientY <= r.bottom + 4,
-      );
-    };
     if (matchMedia('(hover: hover)').matches) {
       document.addEventListener('pointermove', (e) => {
         if (onSky(e)) post({ type: 'pointer', x: e.clientX, y: e.clientY });
@@ -186,9 +211,6 @@
         if (onSky(e)) post({ type: 'wish', x: e.clientX, y: e.clientY });
       });
     }
-
-    document.addEventListener('visibilitychange', () => post({ type: 'visible', visible: !document.hidden }));
-    motion.addEventListener('change', () => post({ type: 'motion', reduced: motion.matches }));
   }
 
   // Wait until the page has painted so the sky never competes with the content

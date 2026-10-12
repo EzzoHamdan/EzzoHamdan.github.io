@@ -647,6 +647,11 @@ section h2 {
   border-top: 1px solid var(--rule);
 }
 
+/* Pairs only matter to the galaxy journey; in the page's flow the grid sees the projects */
+.project-pair {
+  display: contents;
+}
+
 .project.featured {
   grid-column: 1 / -1;
   display: grid;
@@ -1058,8 +1063,9 @@ section h2 {
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     /* Content curves along the dome: tilted and faint at the screen's edges, flat and solid in
-       the middle where it is read. The hero has its own entrance and is left out. */
-    main > section:not(#hero) :is(
+       the middle where it is read. The hero has its own entrance and is left out, and the galaxy
+       journey moves content its own way. */
+    :root:not(.journey) main > section:not(#hero) :is(
         h2,
         .about-text p,
         .facts > div,
@@ -1099,6 +1105,164 @@ section h2 {
 
 @keyframes draw {
   from { transform: scaleY(0); }
+}
+
+/* ──────────────────────────────────────
+   The galaxy journey (html.journey: wide screens, motion allowed, set before first paint).
+   Every [data-stop] is a plane in space, fixed to the screen and moved by src/scripts/journey.ts;
+   the sections only reserve scroll distance. Without the class, the page is an ordinary flow.
+   ────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.journey {
+  scroll-behavior: auto;
+}
+
+.journey main > section:not(#contact) {
+  min-height: 0;
+  padding-block: 0;
+}
+
+.journey #hero {
+  display: block;
+}
+
+.journey [data-stop] {
+  position: fixed;
+  inset: var(--header, 4.75rem) 0 0;
+  z-index: 5;
+  height: fit-content;
+  margin: auto;
+  opacity: 0;
+  pointer-events: none;
+  backface-visibility: hidden;
+}
+
+.journey [data-stop].is-settled {
+  pointer-events: auto;
+}
+
+.journey [data-stop='hero'] {
+  width: min(var(--container), 100vw);
+  opacity: 1;
+}
+
+.journey .sky-caption {
+  position: fixed;
+  z-index: 6;
+}
+
+/* Titles: written in starlight. Each glyph flies in from a scattered point of light as --a goes
+   from 0 to 1, and is filled with "starlit ink": a pale gradient with a few stars caught in it. */
+.journey [data-stop='title'] {
+  width: fit-content;
+  max-width: min(90vw, 11em);
+  font-size: clamp(3.25rem, 6.5vw, 7rem);
+  line-height: 1.08;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.journey [data-stop='title']::before {
+  /* A soft darkness behind the words, so a galaxy behind a title never washes it out */
+  content: '';
+  position: absolute;
+  inset: -40% -20%;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(3, 4, 12, 0.55), rgba(3, 4, 12, 0) 100%);
+  pointer-events: none;
+}
+
+.journey [data-stop='title'] .word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.journey [data-stop='title'] .glyph {
+  --t: clamp(0, (var(--a, 1) - var(--d, 0)) * 1.9, 1);
+  display: inline-block;
+  color: transparent;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 0.8px, transparent 1.4px) var(--sx, 0) var(--sy, 0) / 37px 31px,
+    linear-gradient(to bottom, #f6f8ff 15%, var(--starlight) 55%, #dcc59a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  transform: translate3d(calc(var(--dx, 0px) * (1 - var(--t))), calc(var(--dy, 0px) * (1 - var(--t))), 0)
+    scale(calc(0.08 + 0.92 * var(--t)));
+  opacity: calc(0.3 + 0.7 * var(--t));
+  filter: blur(calc((1 - var(--t)) * 2.5px))
+    drop-shadow(0 0 calc(5px + 20px * (1 - var(--t))) rgba(190, 205, 255, calc(0.3 + 0.6 * (1 - var(--t)))));
+}
+
+.journey [data-stop='title'].is-settled .glyph {
+  transform: none;
+  filter: drop-shadow(0 0 5px rgba(190, 205, 255, 0.3));
+}
+
+/* Content planes: dark glass with brass corner marks, like a reticle, so a tilted plane reads as
+   a plane. --r reveals it from top to bottom as it arrives ("rendering"). */
+.journey [data-stop='panel'] {
+  width: min(var(--container) - 2 * var(--gutter), 100vw - 2 * var(--gutter));
+  padding: clamp(1.5rem, 3vw, 2.75rem);
+  border-radius: 14px;
+  background: radial-gradient(130% 120% at 50% 45%, rgba(7, 11, 26, 0.84), rgba(7, 11, 26, 0.64) 70%, rgba(7, 11, 26, 0.4));
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--r, 1) * 125% - 25%), transparent calc(var(--r, 1) * 125%));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--r, 1) * 125% - 25%), transparent calc(var(--r, 1) * 125%));
+}
+
+.journey [data-stop='panel'].is-settled {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.journey [data-stop='panel']::before {
+  --mark: rgba(201, 161, 91, 0.6);
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--mark), var(--mark)) top left / 22px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top left / 1px 22px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 22px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) top right / 1px 22px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 22px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom left / 1px 22px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 22px 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) bottom right / 1px 22px no-repeat;
+}
+
+.journey .role[data-stop] {
+  width: min(1000px, 100vw - 2 * var(--gutter));
+}
+
+.journey .constellation::before {
+  display: none;
+}
+
+.journey .project-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 clamp(2rem, 5vw, 4rem);
+}
+
+.journey .project-pair .project {
+  padding-block: 0;
+  border-top: 0;
+}
+
+.journey .project-pair.single {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(600px, 100vw - 2 * var(--gutter));
 }
 
 /* ──────────────────────────────────────

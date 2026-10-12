@@ -95,6 +95,11 @@ export function createMeteors(makeCanvas: (w: number, h: number) => Canvas) {
       sparks = [];
     },
 
+    /** Whether anything is still in flight, so an idle sky can stop redrawing. */
+    active() {
+      return meteors.length > 0 || sparks.length > 0;
+    },
+
     /**
      * Spawn one shooting star in a w×h view; a fireball is bigger, brighter and longer.
      * `floor` is the lowest point (fraction of h) a head ends at in open sky; with probability

@@ -36,6 +36,10 @@ const comma = lang === 'en' ? ', ' : '، ';
 const orgNames = (keys: (keyof typeof orgs)[]) => keys.map((k) => t(orgs[k].name, lang)).join(and);
 const current = experience.find((r) => r.end === null)!;
 const previous = experience.filter((r) => r.end !== null);
+// The featured project, then the rest in pairs: on wide screens each pair is one stop of the journey
+const featured = projects.filter((p) => p.featured);
+const rest = projects.filter((p) => !p.featured);
+const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.slice(i * 2, i * 2 + 2));
 ---
 
 <Base
@@ -46,12 +50,13 @@ const previous = experience.filter((r) => r.end !== null);
   alternates={{ en: pageUrl('en'), ar: pageUrl('ar') }}
   ogType="profile"
   jsonLd={profileGraph(lang, title)}
+  journey
 >
   <Header lang={lang} otherLangHref={ui[other].path} />
 
   <main id="main">
     <section id="hero" aria-labelledby="hero-name">
-      <div class="container hero">
+      <div class="container hero" data-stop="hero">
         <h1 class="hero-name" id="hero-name">{t(person.name, lang)}</h1>
         <p class="hero-role">{roleLine}</p>
         <p class="hero-lede">{t(person.summary, lang)}</p>
@@ -81,34 +86,34 @@ const previous = experience.filter((r) => r.end !== null);
     </section>
 
     <section id="about" aria-labelledby="about-title">
-      <div class="container two-col">
-        <div>
-          <h2 id="about-title">{s.sections.about.title}</h2>
+      <div class="container">
+        <h2 id="about-title" data-stop="title">{s.sections.about.title}</h2>
+        <div class="two-col" data-stop="panel">
           <div class="about-text">
             {t(person.about, lang).map((p) => <p>{p}</p>)}
           </div>
+          <dl class="facts">
+            <div><dt>{s.facts.role}</dt><dd>{t(person.role, lang)}</dd></div>
+            <div><dt>{s.facts.basedIn}</dt><dd>{s.location}</dd></div>
+            <div><dt>{s.facts.current}</dt><dd>{t(current.title, lang)}, {s.since} {formatMonth(current.start, lang)}</dd></div>
+            <div><dt>{s.facts.previously}</dt><dd>{previous.map((r) => t(orgs[r.orgs[0]].name, lang)).join(comma)}</dd></div>
+            <div><dt>{s.facts.education}</dt><dd>{t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})</dd></div>
+            <div><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).slice(0, 4).join(comma)}</dd></div>
+            <div><dt>{s.facts.languages}</dt><dd>{t(person.languages, lang)}</dd></div>
+            <div><dt>{s.facts.openTo}</dt><dd>{t(person.openTo, lang)}</dd></div>
+            <div><dt>{s.facts.contact}</dt><dd><a href={`mailto:${site.email}`}>{site.email}</a></dd></div>
+          </dl>
         </div>
-        <dl class="facts">
-          <div><dt>{s.facts.role}</dt><dd>{t(person.role, lang)}</dd></div>
-          <div><dt>{s.facts.basedIn}</dt><dd>{s.location}</dd></div>
-          <div><dt>{s.facts.current}</dt><dd>{t(current.title, lang)}, {s.since} {formatMonth(current.start, lang)}</dd></div>
-          <div><dt>{s.facts.previously}</dt><dd>{previous.map((r) => t(orgs[r.orgs[0]].name, lang)).join(comma)}</dd></div>
-          <div><dt>{s.facts.education}</dt><dd>{t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})</dd></div>
-          <div><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).slice(0, 4).join(comma)}</dd></div>
-          <div><dt>{s.facts.languages}</dt><dd>{t(person.languages, lang)}</dd></div>
-          <div><dt>{s.facts.openTo}</dt><dd>{t(person.openTo, lang)}</dd></div>
-          <div><dt>{s.facts.contact}</dt><dd><a href={`mailto:${site.email}`}>{site.email}</a></dd></div>
-        </dl>
       </div>
     </section>
 
     <section id="experience" aria-labelledby="experience-title">
       <div class="container">
-        <h2 id="experience-title">{s.sections.experience.title}</h2>
+        <h2 id="experience-title" data-stop="title">{s.sections.experience.title}</h2>
         <ol class="constellation">
           {
             experience.map((role) => (
-              <li class="role">
+              <li class="role" data-stop="panel">
                 <time class="role-when" datetime={role.start}>
                   {formatPeriod(role.start, role.end, lang)}
                 </time>
@@ -138,39 +143,44 @@ const previous = experience.filter((r) => r.end !== null);
 
     <section id="projects" aria-labelledby="projects-title">
       <div class="container">
-        <h2 id="projects-title">{s.sections.projects.title}</h2>
+        <h2 id="projects-title" data-stop="title">{s.sections.projects.title}</h2>
         <div class="projects">
           {
-            projects.map((p) => (
-              <article class:list={['project', { featured: p.featured }]} id={`project-${p.id}`}>
-                <div class="project-text">
-                  <p class="project-context">{t(p.context, lang)}</p>
-                  <h3>{t(p.name, lang)}</h3>
-                  <p class="project-desc">{t(p.description, lang)}</p>
-                  <ul class="tags">
-                    {p.tech.map((x) => <li>{x}</li>)}
-                  </ul>
-                  <div class="project-links">
-                    {p.links.map((l) => (
-                      <a href={l.href} target="_blank" rel="noopener">
-                        <Icon name={l.kind === 'github' ? 'github' : l.kind === 'package' ? 'package' : 'external'} />
-                        {t(l.label, lang)}
-                      </a>
-                    ))}
+            [...featured.map((p) => [p]), ...pairs].map((group) => {
+              const cards = group.map((p) => (
+                <article class:list={['project', { featured: p.featured }]} id={`project-${p.id}`} data-stop={p.featured ? 'panel' : undefined}>
+                  <div class="project-text">
+                    <p class="project-context">{t(p.context, lang)}</p>
+                    <h3>{t(p.name, lang)}</h3>
+                    <p class="project-desc">{t(p.description, lang)}</p>
+                    <ul class="tags">
+                      {p.tech.map((x) => <li>{x}</li>)}
+                    </ul>
+                    <div class="project-links">
+                      {p.links.map((l) => (
+                        <a href={l.href} target="_blank" rel="noopener">
+                          <Icon name={l.kind === 'github' ? 'github' : l.kind === 'package' ? 'package' : 'external'} />
+                          {t(l.label, lang)}
+                        </a>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                {p.featured && <Council lang={lang} />}
-              </article>
-            ))
+                  {p.featured && <Council lang={lang} />}
+                </article>
+              ));
+              return group[0].featured ? cards : (
+                <div class:list={['project-pair', { single: group.length === 1 }]} data-stop="panel">{cards}</div>
+              );
+            })
           }
         </div>
       </div>
     </section>
 
     <section id="education" aria-labelledby="education-title">
-      <div class="container two-col">
-        <div>
-          <h2 id="education-title">{s.sections.education.title}</h2>
+      <div class="container">
+        <h2 id="education-title" data-stop="title">{s.sections.education.title}</h2>
+        <div class="two-col" data-stop="panel">
           <article class="degree">
             <h3>{t(education.degree, lang)}</h3>
             <p class="role-org">{t(orgs[education.org].name, lang)}, {education.start} – {education.end}</p>
@@ -179,23 +189,23 @@ const previous = experience.filter((r) => r.end !== null);
               {t(education.highlights, lang).map((b) => <li>{b}</li>)}
             </ul>
           </article>
-        </div>
-        <div>
-          <h3 class="certs-title">{s.sections.certifications}</h3>
-          <ul class="certs">
-            {
-              certifications.map((c) => (
-                <li>
-                  <div class="cert-head">
-                    <h4>{t(c.name, lang)}</h4>
-                    <time datetime={c.date}>{formatMonth(c.date, lang)}</time>
-                  </div>
-                  <p class="cert-org">{t(orgs[c.org].name, lang)}</p>
-                  <p class="cert-note">{t(c.note, lang)}</p>
-                </li>
-              ))
-            }
-          </ul>
+          <div>
+            <h3 class="certs-title">{s.sections.certifications}</h3>
+            <ul class="certs">
+              {
+                certifications.map((c) => (
+                  <li>
+                    <div class="cert-head">
+                      <h4>{t(c.name, lang)}</h4>
+                      <time datetime={c.date}>{formatMonth(c.date, lang)}</time>
+                    </div>
+                    <p class="cert-org">{t(orgs[c.org].name, lang)}</p>
+                    <p class="cert-note">{t(c.note, lang)}</p>
+                  </li>
+                ))
+              }
+            </ul>
+          </div>
         </div>
       </div>
     </section>

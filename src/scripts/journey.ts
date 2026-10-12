@@ -1,0 +1,396 @@
+/**
+ * The galaxy journey, page side. On wide screens with motion allowed (JOURNEY_QUERY, also checked
+ * by the inline script in Base.astro that sets `html.journey` before first paint), scrolling flies
+ * a camera forward through space and the page's content becomes planes placed along the route.
+ *
+ * Every `[data-stop]` element is a stop: the hero, each section title, each block of content. Stops
+ * are fixed to the screen and moved here with CSS 3D transforms; the sections stay in the document
+ * only to reserve scroll distance (and for anchors, the header highlight and screen readers, which
+ * read the page in its normal order).
+ *
+ * Choreography, the same for every stop so fast scrolling stays orderly:
+ * - Arrive: a plane appears far ahead (STRIDE focal lengths away, still in space as the camera
+ *   approaches), turned like a wall on its side of the route, and swings flat into the center.
+ *   Content "renders" in from top to bottom; titles assemble from scattered points of starlight.
+ * - Hold: around each stop (HOLD) the plane is flat, centered, untransformed and fully crisp, and the
+ *   camera all but stops. This is where reading happens.
+ * - Depart: the plane peels off to its side (titles rise overhead) and fades as the camera moves on.
+ * Content planes alternate sides; titles always come straight down the middle. Only the next plane
+ * is ever visible while one holds, and every plane dims while the camera is moving fast, so a fast
+ * scroll reads as a warp between stops, not a pile of flying text.
+ *
+ * The camera position is eased (LAG) and shared with the sky through `camera` messages, with the
+ * same focal length as the CSS perspective, so stars, galaxies and text move as one space.
+ */
+import type { JourneyMessage } from './sky/journey';
+
+export const JOURNEY_QUERY = '(min-width: 900px) and (min-height: 560px) and (prefers-reduced-motion: no-preference)';
+
+type Kind = 'hero' | 'title' | 'panel';
+interface Stop {
+  el: HTMLElement;
+  kind: Kind;
+  section: string;
+  /** Scroll length relative to a content stop. */
+  weight: number;
+  /** -1 left, 1 right, 0 straight ahead: where the plane arrives from and leaves to. */
+  side: number;
+  /** Slight vertical offset on arrival, for variety. */
+  lift: number;
+  /** Scroll position where this stop holds still. */
+  y: number;
+  /** Hold depth in focal lengths: above 1 pushes a plane too big for the screen back until it fits. */
+  fit: number;
+  /** The last styles written, to skip writes that change nothing. */
+  last: string;
+}
+
+/** Half-width of the still hold around each stop, in stops. */
+const HOLD = 0.2;
+/** Camera travel per stop, in focal lengths. */
+const STRIDE = 4;
+/** Scroll length of a content stop, in viewport heights. */
+const PACE = 0.95;
+/** How long the camera takes to catch up with the scroll position, in seconds. */
+const LAG = 0.14;
+/** A little camera movement during a hold, so the stars answer every scroll. */
+const CREEP = 0.08;
+
+const CAPTIONS = {
+  en: {
+    about: 'Toward Andromeda, al-Sufi’s “little cloud”, 2.5 million light-years away',
+    experience: 'Toward the Triangulum galaxy, 2.7 million light-years away',
+    projects: 'Toward the Whirlpool galaxy, about 30 million light-years away',
+    education: 'Toward the Sombrero galaxy, about 30 million light-years away',
+    home: 'Home: the Milky Way, and dawn over Amman',
+  },
+  ar: {
+    about: 'نحو المرأة المسلسلة، «اللطخة السحابية» عند الصوفي، على بعد 2.5 مليون سنة ضوئية',
+    experience: 'نحو مجرة المثلث، على بعد 2.7 مليون سنة ضوئية',
+    projects: 'نحو مجرة الدوامة، على بعد نحو 30 مليون سنة ضوئية',
+    education: 'نحو مجرة القبعة المكسيكية، على بعد نحو 30 مليون سنة ضوئية',
+    home: 'العودة إلى درب التبانة، وفجر عمّان',
+  },
+};
+
+const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const smooth = (a: number, b: number, x: number) => {
+  const t = clamp((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
+/** Camera progress along the route: still around each stop, gliding between them. */
+const stairs = (u: number) => {
+  const s = Math.floor(u);
+  const f = u - s;
+  return s + (1 - CREEP) * smooth(HOLD, 1 - HOLD, f) + CREEP * f;
+};
+
+/**
+ * Split a title into glyphs that can assemble from starlight. Letters in English; whole words in
+ * Arabic, whose letters join. Screen readers get the plain text.
+ */
+function spell(h: HTMLElement, lang: 'en' | 'ar') {
+  const text = (h.textContent ?? '').trim();
+  const plain = Object.assign(document.createElement('span'), { className: 'sr-only', textContent: text });
+  const shown = Object.assign(document.createElement('span'), { className: 'glyphs' });
+  shown.setAttribute('aria-hidden', 'true');
+  text.split(/\s+/).forEach((word, i) => {
+    if (i) shown.append(' ');
+    const w = Object.assign(document.createElement('span'), { className: 'word' });
+    for (const part of lang === 'ar' ? [word] : [...word]) {
+      const g = Object.assign(document.createElement('span'), { className: 'glyph', textContent: part });
+      const a = Math.random() * Math.PI * 2;
+      const d = 90 + Math.random() * 240;
+      g.style.cssText =
+        `--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d * 0.6).toFixed(0)}px;` +
+        `--d:${(Math.random() * 0.45).toFixed(2)};--sx:${Math.round(Math.random() * 40)}px;--sy:${Math.round(Math.random() * 40)}px`;
+      w.append(g);
+    }
+    shown.append(w);
+  });
+  h.replaceChildren(plain, shown);
+}
+
+export function startJourney() {
+  const root = document.documentElement;
+  const lang = root.lang === 'ar' ? 'ar' : 'en';
+  const main = document.getElementById('main')!;
+  const sections = [...main.querySelectorAll<HTMLElement>(':scope > section[id]')];
+  const contact = document.getElementById('contact');
+  const viewCaption = document.getElementById('sky-view');
+  const heroCaption = document.getElementById('sky-caption');
+  const skyline = document.querySelector<SVGSVGElement>('.skyline');
+
+  let content = 0;
+  const stops: Stop[] = [...main.querySelectorAll<HTMLElement>('[data-stop]')].map((el) => {
+    const kind = el.dataset.stop as Kind;
+    let side = 0;
+    let lift = 0;
+    if (kind === 'hero') side = -1;
+    if (kind === 'panel') {
+      side = content % 2 ? -1 : 1;
+      lift = [0, 0.7, -0.7][content % 3];
+      content++;
+    }
+    if (kind === 'title') spell(el, lang);
+    return { el, kind, section: el.closest('section')?.id ?? '', weight: kind === 'title' ? 0.65 : 1, side, lift, y: 0, fit: 1, last: '' };
+  });
+  const lastStop = stops.length - 1;
+
+  let vw = 0, vh = 0, F = 1000, cy = 0, contactTop = 0, horizonFromContact = NaN;
+  let sink: ((msg: JourneyMessage) => void) | null = null;
+
+  function layout() {
+    vw = innerWidth;
+    vh = innerHeight;
+    F = Math.round(0.72 * vw);
+    const header = document.querySelector('.site-header')?.getBoundingClientRect().height ?? 76;
+    root.style.setProperty('--header', `${header}px`);
+    cy = header + (vh - header) / 2;
+
+    let y = 0;
+    stops.forEach((s, i) => {
+      if (i) y += (PACE * vh * (stops[i - 1].weight + s.weight)) / 2;
+      s.y = Math.round(y);
+      s.fit = Math.max(1, s.el.offsetHeight / (vh - header - 48), s.el.offsetWidth / (vw - 48));
+      s.last = '';
+    });
+
+    // The sections become the scroll track. Their boundaries sit halfway between stops, shifted
+    // half a screen so the header highlights the section of the stop being read
+    contactTop = stops[lastStop].y + PACE * vh * 0.55 + vh;
+    const track = sections.filter((sec) => stops.some((s) => s.section === sec.id));
+    let top = 0;
+    track.forEach((sec, k) => {
+      const next = track[k + 1];
+      const i = next ? stops.findIndex((s) => s.section === next.id) : -1;
+      const bottom = Math.round(next ? (stops[i - 1].y + stops[i].y) / 2 + vh / 2 : contactTop);
+      sec.style.height = `${bottom - top}px`;
+      top = bottom;
+    });
+
+    // Where the skyline's far hills sit relative to the top of the contact section (see
+    // Sky.astro::horizonNow for the mapping), so the horizon is known without reading layout
+    // every frame
+    if (contact && skyline) {
+      const c = contact.getBoundingClientRect();
+      const r = skyline.getBoundingClientRect();
+      const box = skyline.viewBox.baseVal;
+      const scale = Math.max(r.width / box.width, r.height / box.height);
+      horizonFromContact = r.bottom - c.top - (box.height - Number(skyline.dataset.horizon)) * scale;
+    }
+
+    sink?.({
+      type: 'route',
+      focal: F,
+      stride: STRIDE * F,
+      cy,
+      legs: track.map((sec) => ({
+        id: sec.id,
+        first: stops.findIndex((s) => s.section === sec.id),
+        last: stops.map((s) => s.section).lastIndexOf(sec.id),
+      })),
+    });
+    onScroll();
+  }
+
+  /** Position along the route, in stops, for a scroll position. */
+  function routeAt(y: number) {
+    if (y <= 0) return 0;
+    for (let i = 0; i < lastStop; i++) {
+      if (y < stops[i + 1].y) return i + (y - stops[i].y) / (stops[i + 1].y - stops[i].y);
+    }
+    // After the last stop the camera flies on one more leg, home, and comes to rest
+    return lastStop + Math.min(1, (y - stops[lastStop].y) / (PACE * vh));
+  }
+
+  function place(s: Stop, a: number, b: number, warp: number) {
+    const hold = F * s.fit;
+    let transform = 'none';
+    let opacity = 1;
+    let reveal = 1;
+    let letters = 1;
+    const settled = a >= 1 && b <= 0;
+    if (a <= 0 || b >= 1) {
+      opacity = 0;
+      reveal = 0;
+      letters = 0;
+    } else if (a < 1) {
+      // Arriving: still in space while the camera approaches, swinging flat into the center
+      const k = 1 - a;
+      const D = hold + STRIDE * F * k;
+      const x = s.side * 1.5 * vw * k ** 1.6;
+      const y = s.lift * 0.4 * vh * k ** 1.6;
+      transform = `perspective(${F}px) translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,${(F - D).toFixed(1)}px) rotateY(${(-s.side * 38 * k ** 1.2).toFixed(2)}deg) rotateX(${(s.lift * 9 * k ** 1.2).toFixed(2)}deg)`;
+      opacity = smooth(0, 0.35, a);
+      reveal = smooth(0.08, 0.8, a);
+      letters = smooth(0.15, 1, a);
+    } else if (b > 0) {
+      // Departing: peeling off to its side, or overhead for a title, as the camera passes
+      const e = smooth(0, 0.6, b);
+      const D = hold * (1 - 0.5 * e);
+      const title = s.kind === 'title';
+      const x = title ? 0 : s.side * 0.9 * vw * e ** 1.4;
+      const y = title ? -0.8 * vh * e ** 1.4 : s.lift * 0.2 * vh * e ** 1.4;
+      const ry = title ? 0 : -s.side * 50 * e;
+      const rx = title ? 20 * e : 0;
+      transform = `perspective(${F}px) translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,${(F - D).toFixed(1)}px) rotateY(${ry.toFixed(2)}deg) rotateX(${rx.toFixed(2)}deg)`;
+      opacity = 1 - smooth(0.1, 0.75, e);
+    } else if (s.fit > 1) {
+      transform = `perspective(${F}px) translateZ(${(F - hold).toFixed(1)}px)`;
+    }
+    opacity *= 1 - 0.6 * warp;
+    const key = `${transform}|${opacity.toFixed(3)}|${reveal.toFixed(3)}|${letters.toFixed(3)}|${b > 0}|${settled}`;
+    if (key === s.last) return opacity;
+    s.last = key;
+    const st = s.el.style;
+    st.transform = transform;
+    st.opacity = opacity.toFixed(3);
+    st.zIndex = b > 0 ? '6' : '5';
+    st.setProperty('--r', reveal.toFixed(3));
+    st.setProperty('--a', letters.toFixed(3));
+    s.el.classList.toggle('is-settled', settled);
+    return opacity;
+  }
+
+  let captionKey = '';
+  function render(u: number, rate: number) {
+    const s0 = Math.floor(u);
+    const t = smooth(HOLD, 1 - HOLD, u - s0);
+    const warp = smooth(1.2, 3.5, rate);
+    stops.forEach((s, i) => {
+      let a = 1;
+      let b = 0;
+      if (i === s0) b = t;
+      else if (i === s0 + 1) a = t;
+      else if (i < s0) b = 1;
+      else a = 0;
+      const opacity = place(s, a, b, warp);
+      if (s.kind === 'hero' && heroCaption) heroCaption.style.opacity = opacity.toFixed(3);
+    });
+
+    // The caption names where the camera is heading
+    const near = stops[Math.min(lastStop, Math.round(u))];
+    const key = u > lastStop + 0.5 ? 'home' : near.kind === 'hero' ? '' : near.section;
+    if (key !== captionKey && viewCaption) {
+      captionKey = key;
+      const text = (CAPTIONS[lang] as Record<string, string>)[key] ?? '';
+      viewCaption.textContent = text;
+      viewCaption.hidden = !text;
+    }
+  }
+
+  // The camera follows the scroll position with a little lag, so wheel steps glide
+  let target = 0, eased = 0, rate = 0, lastZ = 0, lastTime = 0, running = false;
+  const landing = () => clamp(1 - (contactTop - scrollY) / vh);
+
+  function send(speed: number) {
+    const top = contactTop - scrollY;
+    sink?.({
+      type: 'camera',
+      z: STRIDE * F * stairs(eased),
+      speed,
+      u: eased,
+      end: landing(),
+      horizonY: Number.isFinite(horizonFromContact) ? top + horizonFromContact : NaN,
+    });
+  }
+
+  function frame(now: number) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000 || 1 / 60);
+    lastTime = now;
+    const before = eased;
+    eased += (target - eased) * (1 - Math.exp(-dt / LAG));
+    if (Math.abs(target - eased) < 0.0004) eased = target;
+    rate += (Math.abs(eased - before) / dt - rate) * (1 - Math.exp(-dt / 0.12));
+    const z = STRIDE * F * stairs(eased);
+    const speed = (z - lastZ) / dt;
+    lastZ = z;
+    render(eased, rate);
+    if (eased !== target || rate > 0.02) {
+      send(speed);
+      requestAnimationFrame(frame);
+    } else {
+      rate = 0;
+      render(eased, 0);
+      send(0);
+      running = false;
+    }
+  }
+
+  function onScroll() {
+    target = routeAt(scrollY);
+    if (running) return;
+    running = true;
+    lastTime = performance.now();
+    lastZ = STRIDE * F * stairs(eased);
+    requestAnimationFrame(frame);
+  }
+
+  /** Scroll position for an in-page link target: a section's first stop, or a stop's own hold. */
+  function targetFor(id: string) {
+    if (id === 'hero') return 0;
+    if (id === 'contact') return root.scrollHeight - innerHeight;
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const stop = el.closest('[data-stop]') ?? el.querySelector('[data-stop]');
+    const i = stops.findIndex((s) => s.el === stop);
+    return i >= 0 ? stops[i].y : null;
+  }
+
+  // Start where the reader was: an anchor in the address, or the place they reloaded at
+  history.scrollRestoration = 'manual';
+  layout();
+  eased = target = routeAt(scrollY);
+  const anchor = location.hash.slice(1);
+  const saved = Number(sessionStorage.getItem(`journey:${location.pathname}`) ?? NaN);
+  const start = anchor ? targetFor(anchor) : Number.isFinite(saved) ? saved : null;
+  if (start !== null) {
+    scrollTo({ top: start, behavior: 'instant' });
+    eased = target = routeAt(scrollY);
+  }
+  render(eased, 0);
+  addEventListener('pagehide', () => sessionStorage.setItem(`journey:${location.pathname}`, String(scrollY)));
+  addEventListener('scroll', onScroll, { passive: true });
+
+  let resizeTimer: ReturnType<typeof setTimeout>;
+  addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(layout, 150);
+  });
+  // Fonts and late layout change the planes' sizes
+  const observer = new ResizeObserver(() => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(layout, 150);
+  });
+  stops.forEach((s) => observer.observe(s.el));
+  // Crossing into a narrow screen or reduced motion: the page becomes the plain dome again
+  matchMedia(JOURNEY_QUERY).addEventListener('change', () => location.reload());
+
+  // In-page links fly the camera to their stop
+  document.addEventListener('click', (e) => {
+    const a = (e.target as Element).closest?.('a[href^="#"]') as HTMLAnchorElement | null;
+    if (!a || a.classList.contains('skip-link')) return;
+    const id = decodeURIComponent(a.hash.slice(1));
+    const y = targetFor(id);
+    if (y === null) return;
+    e.preventDefault();
+    history.pushState(null, '', `#${id}`);
+    scrollTo({ top: y, behavior: 'smooth' });
+  });
+  // Keyboard focus moving into a plane that is not on screen brings it there
+  document.addEventListener('focusin', (e) => {
+    const stop = (e.target as Element).closest?.('[data-stop]');
+    const i = stops.findIndex((s) => s.el === stop);
+    if (i >= 0 && Math.abs(eased - i) > HOLD) scrollTo({ top: stops[i].y, behavior: 'smooth' });
+  });
+
+  return {
+    /** Connect the sky; it gets the route and the camera from then on. */
+    attach(post: (msg: JourneyMessage) => void) {
+      sink = post;
+      layout();
+      send(0);
+    },
+  };
+}
