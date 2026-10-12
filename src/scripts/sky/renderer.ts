@@ -6,13 +6,14 @@
  * over Amman right now (or tonight at 21:00 in daylight), with shooting stars on top. Stars
  * twinkle; planets shine steadily, as they do in the real sky.
  *
- * Scrolling never moves anything in the sky, so text stays easy to read. It only changes the
- * atmosphere (dusk at the top, deep midnight while reading, dawn at the end), how bright the
+ * Scrolling turns the dome: the whole page spans six hours of real sky rotation around Polaris,
+ * eased so it glides. There are no trails, so the stars stay crisp behind text. Scroll also sets
+ * the atmosphere (dusk at the top, deep midnight while reading, dawn at the end), how bright the
  * sky is, and how many shooting stars fall. Clicking empty sky makes a wish: a shooting star
  * launches from that point.
  *
- * Reduced motion: a still sky with no twinkle, no shooting stars and no wishes.
- * Calm (article pages): a dimmer midnight sky with rare shooting stars.
+ * Reduced motion: a still sky (no rotation, twinkle, shooting stars or wishes).
+ * Calm (article pages): a dimmer, still midnight sky with rare shooting stars.
  */
 import { PLANETS, night, planets, siderealTime } from './astro';
 import { named, projectOne, starColor, starMag, stars, type View } from './catalog';
@@ -55,6 +56,8 @@ const PLANET_COLORS: Record<(typeof PLANETS)[number], string> = {
   saturn: '#f5dca0',
 };
 const MINUTE = 60_000;
+// How far the dome turns over the whole page: six hours of sky, 90° around the pole
+const DOME_SPAN = 6 * 3_600_000;
 
 /**
  * The atmosphere along the page: [scroll position, sky color at the top, color at the bottom].
@@ -130,20 +133,29 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   let view: View = { cx: 0, cy: 0, R: 1 };
   let reduced = false, calm = false, visible = true, started = false;
   let moment = night();
-  let projectedAt = 0;
+  let planetPos = planets(moment.time);
+  let refreshedAt = 0;
+  let lst = NaN;
   let target = 0, progress = 0;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12);
   let hovered = { kind: 'star' as 'star' | 'planet', index: -1 };
+  let floor = 0.9;
   let planetsNow: { key: (typeof PLANETS)[number]; x: number; y: number; u: number; mag: number }[] = [];
 
-  // Positions are for one moment; refresh each minute so a long visit stays "right now"
-  function project() {
+  // The top of the page is "right now"; refresh each minute so a long visit stays current
+  function refresh() {
     moment = night();
-    projectedAt = Date.now();
-    const lst = siderealTime(moment.time);
+    planetPos = planets(moment.time);
+    refreshedAt = Date.now();
+    lst = NaN;
+  }
+
+  // Everything turns together: stars, named stars, planets and the Milky Way
+  function reproject(nextLst: number) {
+    lst = nextLst;
     stars.project(lst, view);
     named.project(lst, view);
-    planetsNow = planets(moment.time).map((pl) => ({ key: pl.key, mag: pl.mag, ...projectOne(pl.ra, pl.dec, lst, view) }));
+    planetsNow = planetPos.map((pl) => ({ key: pl.key, mag: pl.mag, ...projectOne(pl.ra, pl.dec, lst, view) }));
     mctx.clearRect(0, 0, milky.width, milky.height);
     drawMilkyWay(mctx, milkySprite, lst, view, 0.5);
   }
@@ -198,10 +210,13 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   function render(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
-    if (Date.now() - projectedAt > MINUTE) project();
-    // Ease the scroll position so dimming and fading never jump
-    progress += (target - progress) * (1 - Math.exp(-dt * 6));
+    if (Date.now() - refreshedAt > MINUTE) refresh();
+    // Ease the scroll position so the dome glides and dimming never jumps
+    progress += (target - progress) * (1 - Math.exp(-dt * 4.5));
     const p = calm ? 0 : progress;
+    const turn = reduced || calm ? 0 : p;
+    const nextLst = siderealTime(moment.time + turn * DOME_SPAN);
+    if (Number.isNaN(lst) || Math.abs(nextLst - lst) > 1e-5) reproject(nextLst);
     // Full sky behind the hero, calmer behind reading sections, fading into the footer dawn
     const dim = calm ? 0.5 : (1 - 0.3 * smooth(0.04, 0.14, p)) * (1 - 0.65 * smooth(0.82, 1, p));
 
@@ -212,6 +227,12 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     sky.addColorStop(0.55, air.mid);
     sky.addColorStop(1, air.low);
     ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    // The dome: a soft glow toward the horizon at the screen's edges, as on a real night
+    const rim = ctx.createRadialGradient(view.cx, view.cy, view.R * 0.45, view.cx, view.cy, view.R);
+    rim.addColorStop(0, 'rgba(70,82,150,0)');
+    rim.addColorStop(1, `rgba(70,82,150,${calm ? 0.1 : 0.22})`);
+    ctx.fillStyle = rim;
     ctx.fillRect(0, 0, w, h);
 
     ctx.globalAlpha = 0.9 * dim;
@@ -232,17 +253,19 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     if (reduced) return;
     const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
     const shower = moment.shower >= 0 ? 1.5 : 1;
-    // Rare at the top, building toward the end of the page, over Amman
-    const rate = calm ? 0.08 * area : (0.25 + 9 * smooth(0.5, 0.97, p) ** 1.5) * area * shower;
+    // Rare at the top, building gently toward the end of the page, over Amman
+    const rate = calm ? 0.08 * area : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower;
+    // Heads must end above the skyline, which rises into view at the end of the page
+    floor = 0.9 - 0.3 * smooth(0.8, 1, p);
     spawnDebt += dt * rate;
     while (spawnDebt >= 1) {
-      meteors.spawn(w, h);
+      meteors.spawn(w, h, false, floor);
       spawnDebt -= 1;
     }
     nextBolide -= dt;
     if (nextBolide <= 0 && !calm) {
-      meteors.spawn(w, h, true);
-      nextBolide = p > 0.7 ? rand(4, 8) : rand(9, 16);
+      meteors.spawn(w, h, true, floor);
+      nextBolide = p > 0.7 ? rand(7, 12) : rand(12, 20);
     }
     meteors.update(dt);
     meteors.draw(ctx, calm ? 0.6 : 1);
@@ -308,7 +331,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
           milky.width = Math.max(1, Math.round(w / 2));
           milky.height = Math.max(1, Math.round(h / 2));
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          project();
+          refresh();
           started = true;
           break;
         case 'scroll':
@@ -320,10 +343,11 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
           return;
         case 'motion':
           reduced = msg.reduced;
+          lst = NaN;
           break;
         case 'visible':
           visible = msg.visible;
-          if (visible) project();
+          if (visible) refresh();
           break;
         case 'pointer':
           hover(msg.x, msg.y);
@@ -332,7 +356,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
           hover(-1e4, -1e4);
           return;
         case 'wish':
-          if (!reduced && visible) meteors.launch(msg.x, msg.y);
+          if (!reduced && visible) meteors.launch(msg.x, msg.y, w, h * floor);
           return;
       }
       sync();
