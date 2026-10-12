@@ -380,7 +380,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       ctx.drawImage(milky, 0, 0, w, h);
       ctx.globalAlpha = 1;
     }
-    drawSpace(space, 1 - pre);
+    // Galaxies and their color dim in a fast flight (a jump), so they never flash past
+    drawSpace(space, (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))));
     drawStars(now / 1000, space, 1 - 0.55 * dawn, twinkle);
 
     if (!reduced) {

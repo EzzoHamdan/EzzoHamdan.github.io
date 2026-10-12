@@ -51,6 +51,8 @@ const HOLD = 0.2;
 const STRIDE = 4;
 /** Scroll length of a content stop, in viewport heights. */
 const PACE = 0.95;
+/** Scroll length of each kind of stop, relative to PACE: the takeoff from the hero is unhurried. */
+const WEIGHT: Record<Kind, number> = { hero: 1.4, title: 0.65, panel: 1 };
 /** How long the camera takes to catch up with the scroll position, in seconds. */
 const LAG = 0.14;
 /** A little camera movement during a hold, so the stars answer every scroll. */
@@ -133,7 +135,7 @@ export function startJourney() {
       content++;
     }
     if (kind === 'title') spell(el, lang);
-    return { el, kind, section: el.closest('section')?.id ?? '', weight: kind === 'title' ? 0.65 : 1, side, lift, y: 0, fit: 1, last: '' };
+    return { el, kind, section: el.closest('section')?.id ?? '', weight: WEIGHT[kind], side, lift, y: 0, fit: 1, last: '' };
   });
   const lastStop = stops.length - 1;
 
@@ -225,6 +227,14 @@ export function startJourney() {
       opacity = smooth(0, 0.35, a);
       reveal = smooth(0.08, 0.8, a);
       letters = smooth(0.15, 1, a);
+    } else if (b > 0 && s.kind === 'hero') {
+      // Takeoff: the hero is the ground. It sinks away below and tilts like a floor seen from
+      // above as the camera rises, slowly, while the first title gathers ahead
+      const e = smooth(0, 0.9, b);
+      const D = hold * (1 + 0.7 * e);
+      const y = 0.5 * vh * e ** 1.3;
+      transform = `perspective(${F}px) translate3d(0px,${y.toFixed(1)}px,${(F - D).toFixed(1)}px) rotateX(${(32 * e).toFixed(2)}deg)`;
+      opacity = 1 - smooth(0.2, 0.9, e);
     } else if (b > 0) {
       // Departing: peeling off to its side, or overhead for a title, as the camera passes
       const e = smooth(0, 0.6, b);
@@ -268,8 +278,33 @@ export function startJourney() {
       const opacity = place(s, a, b, warp);
       if (s.kind === 'hero' && heroCaption) heroCaption.style.opacity = opacity.toFixed(3);
     });
+    caption(u);
+  }
 
-    // The caption names where the camera is heading
+  /**
+   * A jump (a link or keyboard focus to a stop more than one away) is one move, straight there:
+   * the plane being read leaves, the camera crosses the distance with nothing in between, and only
+   * the destination arrives. Scrolling through every stop on the way flashed each plane past.
+   */
+  function renderFlight(f: Flight, t: number) {
+    stops.forEach((s, i) => {
+      let a = 0;
+      let b = 1;
+      if (i === f.to) {
+        a = smooth(0.5, 1, t);
+        b = 0;
+      } else if (i === f.from) {
+        a = 1;
+        b = smooth(0, 0.4, t);
+      }
+      const opacity = place(s, a, b, 0);
+      if (s.kind === 'hero' && heroCaption) heroCaption.style.opacity = opacity.toFixed(3);
+    });
+    caption(eased);
+  }
+
+  // The caption names where the camera is heading
+  function caption(u: number) {
     const near = stops[Math.min(lastStop, Math.round(u))];
     const key = u > lastStop + 0.5 ? 'home' : near.kind === 'hero' ? '' : near.section;
     if (key !== captionKey && viewCaption) {
@@ -284,11 +319,16 @@ export function startJourney() {
   let target = 0, eased = 0, rate = 0, lastZ = 0, lastTime = 0, running = false;
   const landing = () => clamp(1 - (contactTop - scrollY) / vh);
 
-  function send(speed: number) {
+  interface Flight { y0: number; y1: number; z0: number; z1: number; from: number; to: number; start: number; ms: number }
+  let flight: Flight | null = null;
+  /** Smootherstep: starts and ends at rest, with no jolt in acceleration either. */
+  const glide = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+
+  function send(z: number, speed: number) {
     const top = contactTop - scrollY;
     sink?.({
       type: 'camera',
-      z: STRIDE * F * stairs(eased),
+      z,
       speed,
       u: eased,
       end: landing(),
@@ -299,6 +339,26 @@ export function startJourney() {
   function frame(now: number) {
     const dt = Math.min(0.05, (now - lastTime) / 1000 || 1 / 60);
     lastTime = now;
+    if (flight) {
+      // The page scrolls along with the jump, so the header, the address and the landing at the
+      // end all stay true to where the camera is
+      const t = clamp((now - flight.start) / flight.ms);
+      const k = glide(t);
+      const y = flight.y0 + (flight.y1 - flight.y0) * k;
+      scrollTo({ top: y, behavior: 'instant' });
+      eased = target = routeAt(y);
+      const z = flight.z0 + (flight.z1 - flight.z0) * k;
+      const speed = (z - lastZ) / dt;
+      lastZ = z;
+      renderFlight(flight, t);
+      send(z, speed);
+      if (t >= 1) {
+        flight = null;
+        rate = 0;
+      }
+      requestAnimationFrame(frame);
+      return;
+    }
     const before = eased;
     eased += (target - eased) * (1 - Math.exp(-dt / LAG));
     if (Math.abs(target - eased) < 0.0004) eased = target;
@@ -308,24 +368,60 @@ export function startJourney() {
     lastZ = z;
     render(eased, rate);
     if (eased !== target || rate > 0.02) {
-      send(speed);
+      send(z, speed);
       requestAnimationFrame(frame);
     } else {
       rate = 0;
       render(eased, 0);
-      send(0);
+      send(z, 0);
       running = false;
     }
   }
 
-  function onScroll() {
-    target = routeAt(scrollY);
+  function wake() {
     if (running) return;
     running = true;
     lastTime = performance.now();
     lastZ = STRIDE * F * stairs(eased);
     requestAnimationFrame(frame);
   }
+
+  function onScroll() {
+    if (flight) return;
+    target = routeAt(scrollY);
+    wake();
+  }
+
+  /** Fly to a scroll position: one smooth jump if it is more than a stop away (see renderFlight). */
+  function flyTo(y: number) {
+    const u1 = routeAt(y);
+    const distance = Math.abs(u1 - eased);
+    if (distance <= 1.25) {
+      scrollTo({ top: y, behavior: 'smooth' });
+      return;
+    }
+    flight = {
+      y0: scrollY,
+      y1: y,
+      z0: STRIDE * F * stairs(eased),
+      z1: STRIDE * F * stairs(u1),
+      from: Math.round(eased),
+      to: Number.isInteger(u1) ? u1 : -1,
+      start: performance.now(),
+      // Longer jumps take a little longer, never more than two and a half seconds
+      ms: 1000 * clamp(0.8 + 0.17 * distance, 1.1, 2.4),
+    };
+    wake();
+  }
+  // Any scrolling by the reader takes over from a jump in progress
+  const takeOver = () => {
+    if (!flight) return;
+    flight = null;
+    target = routeAt(scrollY);
+  };
+  addEventListener('wheel', takeOver, { passive: true });
+  addEventListener('touchstart', takeOver, { passive: true });
+  addEventListener('keydown', takeOver);
 
   /** Scroll position for an in-page link target: a section's first stop, or a stop's own hold. */
   function targetFor(id: string) {
@@ -350,6 +446,7 @@ export function startJourney() {
     eased = target = routeAt(scrollY);
   }
   render(eased, 0);
+  lastZ = STRIDE * F * stairs(eased);
   addEventListener('pagehide', () => sessionStorage.setItem(`journey:${location.pathname}`, String(scrollY)));
   addEventListener('scroll', onScroll, { passive: true });
 
@@ -376,13 +473,13 @@ export function startJourney() {
     if (y === null) return;
     e.preventDefault();
     history.pushState(null, '', `#${id}`);
-    scrollTo({ top: y, behavior: 'smooth' });
+    flyTo(y);
   });
   // Keyboard focus moving into a plane that is not on screen brings it there
   document.addEventListener('focusin', (e) => {
     const stop = (e.target as Element).closest?.('[data-stop]');
     const i = stops.findIndex((s) => s.el === stop);
-    if (i >= 0 && Math.abs(eased - i) > HOLD) scrollTo({ top: stops[i].y, behavior: 'smooth' });
+    if (i >= 0 && Math.abs(eased - i) > HOLD) flyTo(stops[i].y);
   });
 
   return {
@@ -390,7 +487,7 @@ export function startJourney() {
     attach(post: (msg: JourneyMessage) => void) {
       sink = post;
       layout();
-      send(0);
+      send(STRIDE * F * stairs(eased), 0);
     },
   };
 }

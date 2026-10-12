@@ -15,6 +15,7 @@ const { lang, otherLangHref, sections = true } = Astro.props;
 const s = ui[lang];
 const other = lang === 'en' ? 'ar' : 'en';
 const links = [
+  ['about', s.nav.about],
   ['experience', s.nav.experience],
   ['projects', s.nav.projects],
   ['education', s.nav.education],
