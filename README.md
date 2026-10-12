@@ -82,7 +82,7 @@ nothing deploys from a feature branch.
 | Sky: drawing, twinkle, scroll dimming, shooting-star rate | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
 | Sky: Amman, sidereal time, Sun, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
 | Sky: catalog arrays and the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
-| Sky: shooting stars | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
+| Sky: shooting stars (one shared direction, tapered trails) | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
@@ -134,8 +134,8 @@ star positions, and that is deliberate (see §7).
 | Bottom (contact) | Stars fade into the CSS dawn while shooting stars fall over the Amman skyline |
 
 **Tunables** (`src/scripts/sky/renderer.ts` unless noted): brightness is the `dim` line in
-`render`; the shooting-star rate is the `rate` line (`0.25 + 6.5 * smooth(0.5, 0.97, p) ** 1.5`);
-direction and spread are `BASE_ANGLE` and `ANGLE_SPREAD` in `meteors.ts`.
+`render`; the shooting-star rate is the `rate` line (`0.25 + 9 * smooth(0.5, 0.97, p) ** 1.5`);
+the shared direction is `DX`/`DY` in `meteors.ts`.
 
 ## 4. Change recipes
 
@@ -224,9 +224,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
   20:19: Polaris at 32.1° altitude (equal to Amman's latitude) and Vega at 58° in the WNW.
 - **No AI-generated video or imagery.** The sky is procedural and the skyline is generated at
   build time; both are lighter than a video and specific to Amman.
-- **Shooting stars share one direction** (down-left, ±6°) and are placed by the middle of their
-  visible path, so they spread evenly across the width. The first version spawned only along the
-  top and right edges, which bunched them on the right.
+- **Shooting stars share exactly one direction** (down-left at 45°, no per-meteor tilt) and are
+  placed by the middle of their visible path, so they spread evenly across the width. The first
+  version spawned only along the top and right edges, which bunched them on the right. A ±6° tilt
+  was tried and dropped: the owner wants one unified path.
+- **Shooting-star look:** tapered two-tone trails, glowing heads, flares and lingering trains (the
+  owner preferred this over the original two-ring style).
 - `[historical]` **Tried and dropped on 2026-10-12, do not re-propose without a new reason:**
   - Rotating the sky with scroll, with long-exposure star trails (eased, then accumulating).
     Dropped: any motion of the star field behind text made reading hard and strained the eyes.
