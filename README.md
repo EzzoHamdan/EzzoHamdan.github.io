@@ -204,7 +204,7 @@ Every stop does the same three things:
 | --- | --- | --- |
 | **Arrive** (from 4 focal lengths away) | Content planes come in turned like a wall on their side of the route, alternating left and right, swing flat into the center and "render" in from top to bottom. Titles come straight down the middle and assemble from points of starlight. | Glides forward one `STRIDE` |
 | **Hold** (±`HOLD` = 0.2 stop) | Flat, centered, no transform, fully crisp: where reading happens. Only this plane is visible. | Almost still (`CREEP`) |
-| **Depart** | Peels off to its side and fades (titles rise overhead) | Moves on |
+| **Depart** | Peels off to its side and fades (titles rise overhead). The hero instead sinks away below and tilts like the ground at takeoff, over a longer first leg (`WEIGHT.hero`) | Moves on |
 
 | Section | Heads for (`sky/journey.ts::DESTINATIONS`) | Space tinted |
 | --- | --- | --- |
@@ -254,12 +254,17 @@ length, so text and space move as one. Nothing on the canvas depends on where th
 > between stops barely streaks and nothing streaks while a stop holds.
 > **Prohibited:** camera pans, rolls or zooms between sections (the reason this mode exists), and
 > anything that accumulates behind text (§7).
-> **Focus and links:** keyboard focus moving into a plane flies to its stop, in-page links fly to
-> the section's title, and a reload returns to the same place.
+> **Focus and links:** a link (the header, the name) or keyboard focus aimed at a stop more than
+> one away makes a single **jump** (`journey.ts::flyTo`): the plane being read leaves, the camera
+> crosses the distance in one smooth move (`glide`, 1.1 to 2.4 s) with every plane in between
+> hidden and the galaxies dimmed, and only the destination arrives. The page scrolls along, so the
+> header highlight and the address stay right; any wheel, touch or key press takes over. A
+> neighbouring stop is an ordinary smooth scroll. A reload returns to the same place.
 
 **Tunables** (`src/scripts/journey.ts` unless noted): `HOLD` (hold width), `STRIDE` (camera travel
-and arrival distance per stop), `PACE` (scroll per stop; titles use 0.65 of it), `LAG` (camera
-easing), `CREEP`; the arrive and depart paths are in `place`. In `src/scripts/sky/journey.ts`:
+and arrival distance per stop), `PACE` (scroll per stop) and `WEIGHT` (its share per kind of
+stop), `LAG` (camera easing), `CREEP`; the arrive and depart paths are in `place`, and a jump's
+duration is the `ms` line in `flyTo`. In `src/scripts/sky/journey.ts`:
 `DESTINATIONS` (galaxy, side, tint), the galaxy offsets in `placeGalaxies`, warp is `EXPOSURE`,
 `MAX_STREAK` and the `warp` line, and the sky colors are `NIGHT`, `SPACE`, `PREDAWN`, `DAWN`. Each
 galaxy's look is its branch in `galaxies.ts::paintGalaxy`.
@@ -398,6 +403,9 @@ if the spelling differs (it's "Shedar", not "Schedar").
   tilting between sections disorganized on fast scrolls. The camera only moves forward, every stop
   follows the same arrive, hold, depart path, and only one plane shows while reading. The dome
   stays for phones and reduced motion, where 3D planes would be cramped or unwelcome.
+- **Links jump instead of scrolling through** (2026-10-12, owner's report). Smooth-scrolling to
+  a far section played every plane's arrive and depart on the way, which flashed them past
+  abruptly. A jump is one move with nothing in between (§3b).
 - **Warp streaks are the one streak allowed, and only in flight.** They appear only on a fast
   scroll, are short (`MAX_STREAK` 60 px) and vanish when the camera slows, so they never sit behind
   text being read. This is the line the long-exposure trails (below) crossed.
