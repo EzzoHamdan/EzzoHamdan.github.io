@@ -41,6 +41,14 @@ const previous = experience.filter((r) => r.end !== null);
 const SHOWN = 2;
 const hidden = (role: (typeof experience)[number]) =>
   (role.groups ?? []).reduce((n, g) => n + Math.max(0, t(g.bullets, lang).length - SHOWN), 0);
+// Each organization's color, for the glow of its logo planet
+const BRAND: Record<string, string> = { '9xai': '#e5484d', z28: '#9b4dff', altibbi: '#2b6bff', iiab: '#3d8ad6', aau: '#c9a15b' };
+/*
+ * In the galaxy journey a content stop is a few parts placed in space around the route
+ * (journey.ts::placeParts): a card on the stop's side of the route and visuals on the other. A
+ * part's data-at is "x,y,depth": x across in viewport widths, positive toward the stop's side, y
+ * down in viewport heights, and extra depth in focal lengths. Cards default to "0.2,0,0".
+ */
 // The featured project, then the rest in pairs: on wide screens each pair is one stop of the journey
 const featured = projects.filter((p) => p.featured);
 const rest = projects.filter((p) => !p.featured);
@@ -94,12 +102,12 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
       <div class="container">
         <h2 id="about-title" data-stop="title">{s.sections.about.title}</h2>
         <div class="two-col" data-stop="panel">
-          <div class="about-text">
+          <div class="about-text" data-part="card">
             {t(person.about, lang).map((p) => <p>{p}</p>)}
           </div>
           <dl class="facts">
             <div><dt>{s.facts.role}</dt><dd>{t(person.role, lang)}</dd></div>
-            <div><dt>{s.facts.basedIn}</dt><dd>{s.location}</dd></div>
+            <div data-part="visual" data-at="-0.25,-0.25,0.22"><dt>{s.facts.basedIn}</dt><dd>{s.location}</dd></div>
             <div>
               <dt>{s.facts.current}</dt>
               <dd>
@@ -121,9 +129,9 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
                 {t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})
               </dd>
             </div>
-            <div><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).slice(0, 4).join(comma)}</dd></div>
-            <div><dt>{s.facts.languages}</dt><dd>{t(person.languages, lang)}</dd></div>
-            <div><dt>{s.facts.openTo}</dt><dd>{t(person.openTo, lang)}</dd></div>
+            <div data-part="visual" data-at="-0.17,-0.06,0.08"><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).slice(0, 4).join(comma)}</dd></div>
+            <div data-part="visual" data-at="-0.29,0.13,0.3"><dt>{s.facts.languages}</dt><dd>{t(person.languages, lang)}</dd></div>
+            <div data-part="visual" data-at="-0.19,0.27,0.18"><dt>{s.facts.openTo}</dt><dd>{t(person.openTo, lang)}</dd></div>
             <div><dt>{s.facts.contact}</dt><dd><a href={`mailto:${site.email}`}>{site.email}</a></dd></div>
           </dl>
         </div>
@@ -137,15 +145,17 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
           {
             experience.map((role) => (
               <li class="role" data-stop="panel">
-                {/* The bank's mark is a wide band inside a square image, so it gets more of the moon */}
-                <figure class:list={['moon', { wide: role.id === 'iiab' }]} aria-hidden="true">
-                  <Image src={role.logo} alt="" width={240} />
-                </figure>
-                <time class="role-when" datetime={role.start}>
-                  {formatPeriod(role.start, role.end, lang)}
-                </time>
+                <div class="role-mark" data-part="visual" data-at="-0.27,-0.03,0.4">
+                  {/* The bank's mark is a wide band inside a square image, so it gets more of the planet */}
+                  <figure class:list={['moon', { wide: role.id === 'iiab' }]} style={`--brand:${BRAND[role.id]}`} aria-hidden="true">
+                    <span class="planet"><Image src={role.logo} alt="" width={240} /></span>
+                  </figure>
+                  <time class="role-when" datetime={role.start}>
+                    {formatPeriod(role.start, role.end, lang)}
+                  </time>
+                </div>
                 <span class="role-star" aria-hidden="true" />
-                <div class="role-body">
+                <div class="role-body" data-part="card">
                   <h3>{t(role.title, lang)}</h3>
                   <p class="role-org">{orgNames(role.orgs)}</p>
                   {role.summary && <p class="role-summary">{t(role.summary, lang)}</p>}
@@ -180,8 +190,14 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
           {
             [...featured.map((p) => [p]), ...pairs].map((group) => {
               const cards = group.map((p) => (
-                <article class:list={['project', { featured: p.featured }]} id={`project-${p.id}`} data-stop={p.featured ? 'panel' : undefined}>
-                  <div class="project-text">
+                <article
+                  class:list={['project', { featured: p.featured }]}
+                  id={`project-${p.id}`}
+                  data-stop={p.featured ? 'panel' : undefined}
+                  data-part={p.featured ? undefined : 'card'}
+                  data-at={p.featured ? undefined : group.length === 1 ? '0.14,0,0' : group.indexOf(p) ? '0.21,0.08,0.25' : '-0.21,-0.07,0'}
+                >
+                  <div class="project-text" data-part={p.featured ? 'card' : undefined}>
                     <p class="project-context">{t(p.context, lang)}</p>
                     <h3>{t(p.name, lang)}</h3>
                     <p class="project-desc">{t(p.description, lang)}</p>
@@ -197,7 +213,7 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
                       ))}
                     </div>
                   </div>
-                  {p.featured && <Council lang={lang} />}
+                  {p.featured && <div class="council-wrap" data-part="visual" data-at="-0.25,0,0.3"><Council lang={lang} /></div>}
                 </article>
               ));
               return group[0].featured ? cards : (
@@ -213,8 +229,12 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
       <div class="container">
         <h2 id="education-title" data-stop="title">{s.sections.education.title}</h2>
         <div class="two-col" data-stop="panel">
-          <figure class="moon" aria-hidden="true"><Image src={education.logo} alt="" width={240} /></figure>
-          <article class="degree">
+          <div class="role-mark" data-part="visual" data-at="-0.31,-0.26,0.55">
+            <figure class="moon" style={`--brand:${BRAND.aau}`} aria-hidden="true">
+              <span class="planet"><Image src={education.logo} alt="" width={240} /></span>
+            </figure>
+          </div>
+          <article class="degree" data-part="card">
             <h3>{t(education.degree, lang)}</h3>
             <p class="role-org">{t(orgs[education.org].name, lang)}, {education.start} – {education.end}</p>
             <p class="degree-badges">{education.badges.map((b) => t(b, lang)).join(comma)}</p>
@@ -222,7 +242,7 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
               {t(education.highlights, lang).map((b) => <li>{b}</li>)}
             </ul>
           </article>
-          <div>
+          <div class="certs-group" data-part="visual" data-at="-0.19,0.12,0.12">
             <h3 class="certs-title">{s.sections.certifications}</h3>
             <ul class="certs">
               {

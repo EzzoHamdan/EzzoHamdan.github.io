@@ -43,6 +43,25 @@ interface Stop {
   fit: number;
   /** The last styles written, to skip writes that change nothing. */
   last: string;
+  /** For a content stop, the pieces placed in space around the route (see placeParts). */
+  parts: Part[];
+}
+
+/**
+ * A piece of a content stop, fixed at a point in space: `x` across (viewport widths, positive
+ * toward the stop's side of the route), `y` down (viewport heights) and `dz` extra depth (focal
+ * lengths), seen at the stop's hold. From ProfilePage.astro's data-at.
+ */
+interface Part {
+  el: HTMLElement;
+  card: boolean;
+  x: number;
+  y: number;
+  dz: number;
+  /** Turn toward the route, in degrees: cards like signs facing the road, visuals barely. */
+  turn: number;
+  fit: number;
+  last: string;
 }
 
 /** Half-width of the still hold around each stop, in stops. */
@@ -207,7 +226,12 @@ export function startJourney() {
       content++;
     }
     if (kind === 'title') spell(el, lang);
-    return { el, kind, section: el.closest('section')?.id ?? '', weight: WEIGHT[kind], side, lift, y: 0, fit: 1, last: '' };
+    const parts: Part[] = [...el.querySelectorAll<HTMLElement>('[data-part]')].map((p) => {
+      const card = p.dataset.part === 'card';
+      const [x, y, dz] = (p.dataset.at ?? (card ? '0.2,0,0' : '-0.26,0,0.35')).split(',').map(Number);
+      return { el: p, card, x, y, dz, turn: card ? 10 : 4, fit: 1, last: '' };
+    });
+    return { el, kind, section: el.closest('section')?.id ?? '', weight: WEIGHT[kind], side, lift, y: 0, fit: 1, last: '', parts };
   });
   const lastStop = stops.length - 1;
 
@@ -230,6 +254,10 @@ export function startJourney() {
       s.y = Math.round(y);
       s.fit = Math.max(1, s.el.offsetHeight / (vh - header - 48), s.el.offsetWidth / (vw - 48));
       s.last = '';
+      for (const p of s.parts) {
+        p.fit = Math.max(1, p.el.offsetHeight / (vh - header - 40));
+        p.last = '';
+      }
     });
 
     // The homecoming's stages follow the last stop like stops of their own
@@ -296,6 +324,59 @@ export function startJourney() {
     return STRIDE * F * (flight + 0.15 * Math.max(0, st - lastStop - 1));
   }
 
+  /** The camera's distance along the route for the text: like cameraZ, but still during holds. */
+  const panelZ = (u: number) => {
+    const s0 = Math.floor(u);
+    return STRIDE * F * (s0 + smooth(HOLD, 1 - HOLD, u - s0));
+  };
+
+  // The mouse's lean moves the camera a little across; near things shift more than far ones
+  let px = 0, py = 0;
+
+  /**
+   * A content stop's parts are fixed in space beside the route, cards on the stop's side and
+   * visuals on the other. Nothing slides them into place: as the camera approaches, perspective
+   * alone grows them and carries them outward to their side, and as it goes on they pass out of
+   * view there, like signs along a road. At the hold the camera is still and so are they.
+   */
+  function placeParts(s: Stop, i: number, zP: number, shown: boolean, settled: boolean, warp: number) {
+    const camX = px * 0.012 * vw;
+    const camY = py * 0.01 * vh;
+    let frameOpacity = 0;
+    for (const p of s.parts) {
+      const D = STRIDE * F * i - zP + F * p.fit * (1 + p.dz);
+      let opacity = 0;
+      let transform = 'none';
+      let reveal = 0;
+      if (shown && D > 0.3 * F && D < 6 * F) {
+        const x = s.side * p.x * vw - camX;
+        const y = p.y * vh - camY;
+        const turn = -Math.sign(s.side * p.x) * p.turn;
+        transform = `perspective(${F}px) translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,${(F - D).toFixed(1)}px) rotateY(${turn.toFixed(2)}deg)`;
+        // Fades in from far ahead, out as it passes close by
+        opacity = smooth(5.2 * F, 3.2 * F, D) * (1 - smooth(0.8 * F, 0.42 * F, D)) * (1 - 0.6 * warp);
+        reveal = smooth(4.8 * F, 1.7 * F, D);
+      }
+      frameOpacity = Math.max(frameOpacity, opacity);
+      const key = `${transform}|${opacity.toFixed(3)}|${reveal.toFixed(3)}`;
+      if (key === p.last) continue;
+      p.last = key;
+      p.el.style.transform = transform;
+      p.el.style.opacity = opacity.toFixed(3);
+      p.el.style.zIndex = String(Math.round(100 - (D / F) * 10));
+      p.el.style.setProperty('--r', reveal.toFixed(3));
+    }
+    // Stops already passed stay above the ones ahead, since they are nearer. (No visibility
+    // toggling: a hidden part couldn't take keyboard focus, which is how a far stop is reached)
+    const passed = STRIDE * F * i < zP;
+    const key = `${settled}|${passed}|${frameOpacity > 0}`;
+    if (key !== s.last) {
+      s.last = key;
+      s.el.classList.toggle('is-settled', settled);
+      s.el.style.zIndex = passed ? '6' : '5';
+    }
+  }
+
   function place(s: Stop, a: number, b: number, warp: number) {
     const hold = F * s.fit;
     let transform = 'none';
@@ -358,7 +439,12 @@ export function startJourney() {
     const s0 = Math.floor(u);
     const t = smooth(HOLD, 1 - HOLD, u - s0);
     const warp = smooth(1.2, 3.5, rate);
+    const zP = panelZ(u);
     stops.forEach((s, i) => {
+      if (s.parts.length) {
+        placeParts(s, i, zP, Math.abs(u - i) < 1.5, Math.abs(u - i) <= HOLD, warp);
+        return;
+      }
       let a = 1;
       let b = 0;
       if (i === s0) b = t;
@@ -377,7 +463,13 @@ export function startJourney() {
    * the destination arrives. Scrolling through every stop on the way flashed each plane past.
    */
   function renderFlight(f: Flight, t: number) {
+    const zP = f.p0 + (f.p1 - f.p0) * glide(t);
     stops.forEach((s, i) => {
+      if (s.parts.length) {
+        // Only the stop being left and the one being reached are out there during a jump
+        placeParts(s, i, zP, i === f.from || i === f.to, false, 0);
+        return;
+      }
       let a = 0;
       let b = 1;
       if (i === f.to) {
@@ -431,7 +523,19 @@ export function startJourney() {
   let target = 0, eased = 0, rate = 0, lastZ = 0, lastTime = 0, running = false;
   const landing = () => clamp(1 - (contactTop - scrollY) / vh);
 
-  interface Flight { y0: number; y1: number; z0: number; z1: number; from: number; to: number; start: number; ms: number }
+  interface Flight {
+    y0: number;
+    y1: number;
+    z0: number;
+    z1: number;
+    /** The text's camera distance at both ends (panelZ). */
+    p0: number;
+    p1: number;
+    from: number;
+    to: number;
+    start: number;
+    ms: number;
+  }
   let flight: Flight | null = null;
   /** Smootherstep: starts and ends at rest, with no jolt in acceleration either. */
   const glide = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
@@ -518,6 +622,8 @@ export function startJourney() {
       y1: y,
       z0: cameraZ(eased),
       z1: cameraZ(u1),
+      p0: panelZ(eased),
+      p1: panelZ(u1),
       from: Math.round(eased),
       to: Number.isInteger(u1) ? u1 : -1,
       start: performance.now(),
@@ -600,14 +706,13 @@ export function startJourney() {
     button.textContent = other;
   });
 
-  // The mouse leans the scene a little: --px and --py (-1..1), eased, drive the parallax of cards,
-  // moons and chips in CSS, and the sky leans the same way
-  let px = 0, py = 0, tx = 0, ty = 0, leaning = false;
+  // The mouse leans the camera a little (px and py, -1..1, eased): the parts shift by their depth
+  // and the sky leans the same way
+  let tx = 0, ty = 0, leaning = false;
   const lean = () => {
     px += (tx - px) * 0.08;
     py += (ty - py) * 0.08;
-    main.style.setProperty('--px', px.toFixed(3));
-    main.style.setProperty('--py', py.toFixed(3));
+    if (!running && !flight) render(eased, 0);
     sink?.({ type: 'lean', x: px, y: py });
     if (Math.abs(tx - px) + Math.abs(ty - py) > 0.002) requestAnimationFrame(lean);
     else leaning = false;
