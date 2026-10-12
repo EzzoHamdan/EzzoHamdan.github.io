@@ -26,9 +26,9 @@
 
 **Limits:**
 
-- **JavaScript:** about 5.5 KB gzipped on first load. The sky worker, including the 1,627-star
-  catalog and the planet ephemeris, is about 20 KB gzipped and loads after the page has painted.
-  Everything else is HTML and CSS.
+- **JavaScript:** about 5.5 KB gzipped on first load. The sky worker, including the 5,044-star
+  catalog (every naked-eye star, to magnitude 6) and the planet ephemeris, is about 40 KB gzipped
+  and loads after the page has painted. Everything else is HTML and CSS.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
 - **Hosting:** GitHub Pages serves static files only; there is no server code anywhere.
 
@@ -86,7 +86,7 @@ nothing deploys from a feature branch.
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
-| Amman skyline at the footer dawn | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
+| Amman at dawn (landmarks, mist, the flag, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
 | Blog schema and routes | [`src/content.config.ts`](src/content.config.ts), [`src/pages/blog/`](src/pages/blog/) |
 | Post-build checks | [`scripts/check-dist.mjs`](scripts/check-dist.mjs) |
@@ -94,14 +94,17 @@ nothing deploys from a feature branch.
 
 ## 3. How the sky works
 
-The page is a journey through the real sky over Amman, seen as a dome. The sky holds stars to
-magnitude 5, the naked-eye planets and the Milky Way, positioned for right now (or 21:00 tonight
+The page is a journey through the real sky over Amman, seen as a dome. The sky holds every
+naked-eye star (to magnitude 6), the naked-eye planets and the Milky Way, positioned for right now (or 21:00 tonight
 if it is daytime in Amman). Stars twinkle; planets shine steadily, as in the real sky. Scrolling
 moves two things:
 
 - **Time:** the whole page spans six hours of sky rotation around Polaris (90°).
-- **The camera:** each section is a *shot*. The camera holds while you read a section and
-  glides to the next shot between sections.
+- **The camera:** each section is a *shot*, each zoomed a little deeper than the last. The camera
+  holds while you read a section and glides to the next shot as the next section begins, with a
+  gentle push-in. Every move takes the same scroll distance (about one screen), so no move is
+  faster than another. Like a telescope, zooming in reveals fainter stars (one magnitude per
+  doubling of magnification).
 
 Everything is eased, and nothing ever leaves trails. Scroll also sets the atmosphere color, the
 sky's brightness and the shooting-star rate. Clicking empty sky makes a wish.
@@ -113,12 +116,12 @@ sky's brightness and the shooting-star rate. Clicking empty sky makes a wish.
 | `experience` | The southern sky | "Looking south: …" |
 | `projects` | East, where new stars rise | The brightest planet in view, if any |
 | `education` | North, toward Polaris | "Looking north: Polaris" |
-| `contact` | Down to the eastern horizon at dawn (lens 0.12, near-rectilinear) | "Looking east, toward dawn over Amman" |
+| `contact` | Down to the eastern horizon at dawn (lens 0.12, near-rectilinear). The horizon follows the skyline's live position, so the camera lowers its gaze as the city rises into view | "Looking east, toward dawn over Amman" |
 
 ```text
-Sky.astro ── scroll 0..1 ──────────────► worker: eased progress (time constant ≈ 0.22 s)
-          └─ "scenes": section anchors      │
-             + skyline horizon y at end     ├─► time = now + progress × 6 h ──► sidereal time ─┐
+Sky.astro ── scroll 0..1 + skyline's horizon y now ─► worker: eased progress (time constant ≈ 0.22 s)
+          └─ "scenes": where each section starts (px)  │
+                                            ├─► time = now + progress × 6 h ──► sidereal time ─┐
                                             ├─► shot = SHOTS[section], gliding between ─► camera()┤
                                             │                                                     ▼
                                             │              PointSet.project: stars, planets, Milky Way
@@ -230,10 +233,15 @@ if the spelling differs (it's "Shedar", not "Schedar").
   the camera tilts, so checking the point straight ahead is not enough to keep ground off screen.
   `horizonTop` samples the whole visible horizon. Drawing the ground from points sorted by x
   instead of by azimuth once striped the whole sky.
-- ⚠ **The dawn shot depends on page layout:** `Sky.astro` measures where the skyline's far hills
-  land at the very end and sends it as `horizonY`, and re-sends on any layout change through a
-  `ResizeObserver`. If the skyline moves or changes height, the horizon follows; if `.skyline`
-  is renamed, the shot falls back to 75% of the screen height.
+- ⚠ **The dawn shot follows the skyline live.** `Sky.astro::horizonNow` sends where the skyline's
+  horizon line (`data-horizon` in its viewBox) is on screen with every scroll update, and the
+  contact shot is re-solved every frame to match. Two traps: the skyline uses
+  `preserveAspectRatio="xMidYMax slice"`, so map viewBox y with its real scale, never as a
+  fraction of the element's height; and an earlier version solved the horizon only for the very
+  bottom of the page, which left a visible band above the city everywhere else. If `.skyline` is
+  renamed, the shot falls back to 75% of the screen height.
+- **The skyline keeps its 4:1 proportions** (`aspect-ratio`, capped at 42vh) so wide screens
+  don't crop the tops of the towers and the flag. Keep landmark tops below viewBox y ≈ 30.
 - ⚠ **Planet positions are valid from 1800 to 2050.** They use Standish's approximate Keplerian
   elements (table 1, `astro.ts::ELEMENTS`). After 2050, switch to table 2 (valid 3000 BC to
   3000 AD), which adds correction terms for Jupiter and Saturn.
