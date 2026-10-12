@@ -9,9 +9,9 @@
  *   twinkling in space).
  * - The field: real and generated stars at depths up to FAR focal lengths, recycled endlessly, so
  *   the flight never runs out of stars.
- * - Galaxies: each section flies toward one (DESTINATIONS), seen far away behind its title, growing
- *   as its content is read, and passed close by on the way to the next. Its color tints the space
- *   around it.
+ * - Galaxies: each section flies toward one (DESTINATIONS), farthest first so the whole flight is a
+ *   return home, seen far away behind its title, growing as its content is read, and passed close
+ *   by on the way to the next. Its color tints the space around it.
  * - Warp: stars stretch into short streaks only while the camera is actually moving fast, which
  *   happens between stops, never while a stop holds still for reading.
  * - Homecoming (`drawHome`): after the last stop, a powers-of-ten dive home, one stage per leg of
@@ -72,11 +72,12 @@ const EXPOSURE = 0.03;
 const MAX_STREAK = 60;
 
 /** Each section's destination, the side of the route it lies on and the color of its space. */
+// Farthest first, so the journey is a return home (distances in journey.ts::DISTANCE)
 const DESTINATIONS: Record<string, { kind: GalaxyKind; side: number; tint: number[] }> = {
-  about: { kind: 'andromeda', side: 1, tint: [92, 74, 178] },
-  experience: { kind: 'triangulum', side: -1, tint: [44, 124, 168] },
-  projects: { kind: 'whirlpool', side: 1, tint: [160, 64, 136] },
-  education: { kind: 'sombrero', side: -1, tint: [168, 124, 64] },
+  about: { kind: 'sombrero', side: 1, tint: [168, 124, 64] },
+  experience: { kind: 'whirlpool', side: -1, tint: [160, 64, 136] },
+  projects: { kind: 'triangulum', side: 1, tint: [44, 124, 168] },
+  education: { kind: 'andromeda', side: -1, tint: [92, 74, 178] },
 };
 /** How much each stage of the homecoming zooms in on the next. */
 const ZOOM = 14;
@@ -159,6 +160,9 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   let reduced = false, visible = true, started = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(8, 14);
   let drawnKey = '';
+  // The camera never stops completely: a slow drift (depth dz, across dx and dy), so near stars
+  // shift more than far ones and galaxies swell a little, even while a stop holds still
+  let dz = 0, dx = 0, dy = 0, breath = 1, clock = 0, orbitClock = 0, lastDraw = 0;
   let galaxies: Galaxy[] = [];
 
   // The star field: position across the view (world units), depth when the camera is at 0, and
@@ -247,14 +251,37 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const toSun = Math.atan2(-earth.y, -earth.x);
     const want = Math.atan2(Math.sin(globe.sunAngle) / ECLIPTIC_TILT, Math.cos(globe.sunAngle));
     const turn = want - toSun;
-    // Orbits drawn on a square-root scale, so the inner planets aren't crowded into the Sun
-    return all.map((p) => {
-      const angle = Math.atan2(p.y, p.x) + turn;
-      const r = Math.sqrt(p.a);
-      return { key: p.key, r, x: r * Math.cos(angle), y: r * Math.sin(angle) * ECLIPTIC_TILT };
-    });
+    // Orbits drawn on a square-root scale, so the inner planets aren't crowded into the Sun. The
+    // planets start where they really are and then orbit, Mercury once in about 24 seconds and the
+    // rest slower by Kepler's third law; the Earth stays put, since the zoom is closing in on it
+    return all.map((p) => ({
+      key: p.key,
+      r: Math.sqrt(p.a),
+      angle: Math.atan2(p.y, p.x) + turn,
+      speed: p.key === 'earth' ? 0 : (2 * Math.PI) / (100 * p.a ** 1.5),
+    }));
   })();
+  const place = (p: (typeof orbiters)[number]) => {
+    const a = p.angle + p.speed * orbitClock;
+    return [p.r * Math.cos(a), p.r * Math.sin(a) * ECLIPTIC_TILT];
+  };
   const earthAt = orbiters.find((p) => p.key === 'earth')!;
+  const [earthX, earthY] = place(earthAt);
+
+  /** A slow ripple around a marked place: a ring that grows and fades every 2.4 seconds. */
+  function ripple(x: number, y: number, alpha: number) {
+    const k = (clock / 2.4) % 1;
+    ctx.strokeStyle = 'rgba(201,161,91,0.9)';
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * (1 - k) * 0.7;
+    ctx.beginPath();
+    ctx.arc(x, y, 9 + 14 * k, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   /** The homecoming's zoom level: about -1.3 at the last stop, then one stage per leg of scroll. */
   const homeLevel = (home: number) => (home < 1 ? -1.3 + 1.3 * home : home - 1) + 0.45 * smooth(0, 0.6, end);
@@ -264,25 +291,20 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const a = smooth(-1.8, -1, L) * (1 - smooth(0.15, 0.6, L)) * fade;
     if (a < 0.01) return;
     if (!milkyWay) return;
-    const k = (0.9 * h * ZOOM ** L) / (2 * GALAXY_RADIUS);
+    const k = (0.9 * h * ZOOM ** L * breath) / (2 * GALAXY_RADIUS);
+    const hx = cx - dx * 0.4;
+    const hy = cy - dy * 0.4;
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = a;
     // Past full size the portrait's points of light would show as blocks; soften them as it grows
     const soften = Math.max(0, k - 1.2) * 3;
     if (soften > 0.5) ctx.filter = `blur(${soften.toFixed(1)}px)`;
-    ctx.drawImage(milkyWay, cx - SUN_IN_MILKY_WAY.x * k, cy - SUN_IN_MILKY_WAY.y * k, SPRITE * k, SPRITE * k);
+    ctx.drawImage(milkyWay, hx - SUN_IN_MILKY_WAY.x * k, hy - SUN_IN_MILKY_WAY.y * k, SPRITE * k, SPRITE * k);
     ctx.filter = 'none';
     ctx.globalCompositeOperation = 'source-over';
     // You are here
     const mark = smooth(-1, -0.5, L) * (1 - smooth(0.1, 0.6, L)) * fade;
-    if (mark > 0.01) {
-      ctx.globalAlpha = mark;
-      ctx.strokeStyle = 'rgba(201,161,91,0.9)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 9, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    if (mark > 0.01) ripple(hx, hy, mark);
     ctx.globalAlpha = 1;
   }
 
@@ -292,11 +314,13 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const showEarth = smooth(0.3, 0.85, L) * fade;
     if (showEarth < 0.01) return;
     // Pixels per unit of orbit, and the point the zoom closes in on: the Sun, then the Earth
-    const S = 0.136 * h * ZOOM ** (L - 1);
+    const S = 0.136 * h * ZOOM ** (L - 1) * breath;
     const focus = smooth(1.15, 1.85, L);
-    const fx = earthAt.x * focus;
-    const fy = earthAt.y * focus;
-    const at = (x: number, y: number) => [cx + (x - fx) * S, cy + (y - fy) * S];
+    const fx = earthX * focus;
+    const fy = earthY * focus;
+    const hx = cx - dx * 0.4;
+    const hy = cy - dy * 0.4;
+    const at = (x: number, y: number) => [hx + (x - fx) * S, hy + (y - fy) * S];
 
     if (showSystem > 0.01) {
       const [sx, sy] = at(0, 0);
@@ -320,7 +344,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
         ctx.ellipse(sx, sy, rx, rx * ECLIPTIC_TILT, 0, 0, Math.PI * 2);
         ctx.stroke();
         if (p.key === 'earth') continue;
-        const [px, py] = at(p.x, p.y);
+        const [ox, oy] = place(p);
+        const [px, py] = at(ox, oy);
         const look = ORBITER_LOOK[p.key];
         ctx.globalAlpha = showSystem;
         ctx.fillStyle = look.color;
@@ -337,8 +362,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     }
 
     // The Earth: a blue dot that grows into the globe, faster than the orbits around it
-    const [ex, ey] = at(earthAt.x, earthAt.y);
-    const er = 0.3 * h * ZOOM ** ((L - 2) * 1.6);
+    const [ex, ey] = at(earthX, earthY);
+    const er = 0.3 * h * ZOOM ** ((L - 2) * 1.6) * breath;
     const asGlobe = globe.done ? smooth(3, 8, er) : 0;
     if (asGlobe < 1) {
       ctx.globalAlpha = showEarth * (1 - asGlobe);
@@ -364,10 +389,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
         ctx.beginPath();
         ctx.arc(ex, ey, 2.5, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = 'rgba(201,161,91,0.9)';
-        ctx.beginPath();
-        ctx.arc(ex, ey, 9, 0, Math.PI * 2);
-        ctx.stroke();
+        ripple(ex, ey, mark);
       }
     }
     ctx.globalAlpha = 1;
@@ -392,9 +414,9 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     for (const g of galaxies) {
       const k = presence(g) * space * fade;
       if (k < 0.01) continue;
-      const d = Math.max(0.3 * F, g.z - z);
-      const x = clamp(cx + (F * g.x) / d, 0, w);
-      const y = clamp(cy + (F * g.y) / d, 0, h);
+      const d = Math.max(0.3 * F, g.z - z - dz);
+      const x = clamp(cx + (F * (g.x - dx)) / d, 0, w);
+      const y = clamp(cy + (F * (g.y - dy)) / d, 0, h);
       const r = Math.max(w, h) * 0.85;
       const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
       grad.addColorStop(0, `rgba(${g.tint.join(',')},${0.2 * k})`);
@@ -406,13 +428,13 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
 
     // Farthest first, so nearer galaxies lie over farther ones
     ctx.globalCompositeOperation = 'lighter';
-    const order = galaxies.filter((g) => g.sprite && g.z - z > NEAR * F).sort((a, b) => b.z - a.z);
+    const order = galaxies.filter((g) => g.sprite && g.z - z - dz > NEAR * F).sort((a, b) => b.z - a.z);
     for (const g of order) {
-      const d = g.z - z;
+      const d = g.z - z - dz;
       const size = (g.size * F) / d;
       if (size < 4) continue;
-      const x = cx + (F * g.x) / d;
-      const y = cy + (F * g.y) / d;
+      const x = cx + (F * (g.x - dx)) / d;
+      const y = cy + (F * (g.y - dy)) / d;
       if (x + size / 2 < 0 || x - size / 2 > w || y + size / 2 < 0 || y - size / 2 > h) continue;
       // Faint while far away, so a distant destination never competes with the title in front
       // of it; full strength from about two stops out
@@ -435,11 +457,11 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     ctx.lineCap = 'round';
     for (let i = 0; i < X.length; i++) {
       // Stars that fall behind the camera come around again far ahead
-      let d = (D0[i] - near - z) % span;
+      let d = (D0[i] - near - z - dz) % span;
       if (d < 0) d += span;
       d += near;
-      const x = cx + (F * X[i]) / d;
-      const y = cy + (F * Y[i]) / d;
+      const x = cx + (F * (X[i] - dx)) / d;
+      const y = cy + (F * (Y[i] - dy)) / d;
       if (x < -60 || x > w + 60 || y < -60 || y > h + 60) continue;
       const m = M[i] + 5 * Math.log10(d / D0[i]);
       if (m > LIMIT) continue;
@@ -459,8 +481,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       if (warp > 0.02 && m < 5) {
         // The streak: where this star was a moment ago, at its old depth
         const d2 = Math.max(near, d + lag);
-        let x2 = cx + (F * X[i]) / d2;
-        let y2 = cy + (F * Y[i]) / d2;
+        let x2 = cx + (F * (X[i] - dx)) / d2;
+        let y2 = cy + (F * (Y[i] - dy)) / d2;
         const len = Math.hypot(x2 - x, y2 - y);
         if (len > MAX_STREAK) {
           x2 = x + ((x2 - x) * MAX_STREAK) / len;
@@ -496,6 +518,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   function render(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
+    clock = now / 1000;
     // Leaving the atmosphere over the first leg of the flight; landing back in it at the end
     const air = 1 - smooth(0.05, 0.85, z / stride);
     const space = 1 - air;
@@ -507,10 +530,23 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     if (!milkyWay && u > lastStop - 5 && galaxies.every((g) => g.sprite || g.z - z > (FAR + 4) * F)) {
       milkyWay = paintGalaxy('milkyway', makeCanvas);
     }
-    const busy = twinkle > 0.01 || meteors.active() || !globe.done || !galaxies.every((g) => g.sprite || g.z - z > (FAR + 4) * F);
+    // The drift: strongest in open space, none in the hero's real sky or at dawn over Amman
+    const drift = reduced ? 0 : (1 - air) * (1 - dawn);
+    const T = 2 * Math.PI * clock;
+    dz = drift * 0.1 * F * Math.sin(T / 16);
+    dx = drift * 0.012 * w * Math.sin(T / 21);
+    dy = drift * 0.009 * h * Math.sin(T / 27 + 1);
+    breath = 1 + drift * 0.015 * Math.sin(T / 16);
+    const L = homeLevel(home);
+    if (L > 0.3 && L < 2.5) orbitClock += dt;
+
+    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done;
     const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
-    if (!busy && key === drawnKey) return;
+    if (drift < 0.01 && !moving && key === drawnKey) return;
+    // While only the slow drift moves, half the frame rate is plenty
+    if (!moving && key === drawnKey && now - lastDraw < 30) return;
     drawnKey = key;
+    lastDraw = now;
 
     const top = mix(mix(mix(SPACE[0], NIGHT[0], air), PREDAWN[0], pre), DAWN[0], dawn);
     const low = mix(mix(mix(SPACE[1], NIGHT[1], air), PREDAWN[1], pre), DAWN[1], dawn);
@@ -530,7 +566,6 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     // Galaxies and their color dim in a fast flight (a jump), so they never flash past
     drawSpace(space, (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))));
     // Home fades into the dawn sky as the city comes into view
-    const L = homeLevel(home);
     const homeFade = 1 - smooth(0.05, 0.45, end);
     drawHomeBack(L, homeFade);
     drawStars(now / 1000, space, 1 - 0.55 * dawn, twinkle);

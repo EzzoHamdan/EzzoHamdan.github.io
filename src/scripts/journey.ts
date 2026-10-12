@@ -64,28 +64,84 @@ const CREEP = 0.08;
 const HOME_STAGES = ['milkyway', 'sun', 'earth'] as const;
 const HOME_WEIGHT = 0.8;
 
+/** What the camera is passing, by section or homecoming stage, for the caption. */
 const CAPTIONS = {
   en: {
-    about: 'Toward Andromeda, al-Sufi’s “little cloud”, 2.5 million light-years away',
-    experience: 'Toward the Triangulum galaxy, 2.7 million light-years away',
-    projects: 'Toward the Whirlpool galaxy, about 30 million light-years away',
-    education: 'Toward the Sombrero galaxy, about 30 million light-years away',
-    milkyway: 'Home: the Milky Way, our galaxy',
-    sun: 'The Solar System, in the Orion Arm of the Milky Way',
+    about: 'The Sombrero galaxy',
+    experience: 'The Whirlpool galaxy',
+    projects: 'The Triangulum galaxy',
+    education: 'Andromeda, al-Sufi’s “little cloud”',
+    milkyway: 'The Milky Way, our galaxy',
+    sun: 'The Solar System, in the Orion Arm',
     earth: 'Earth, as dawn reaches Amman',
     dawn: 'Dawn over Amman',
   },
   ar: {
-    about: 'نحو المرأة المسلسلة، «اللطخة السحابية» عند الصوفي، على بعد 2.5 مليون سنة ضوئية',
-    experience: 'نحو مجرة المثلث، على بعد 2.7 مليون سنة ضوئية',
-    projects: 'نحو مجرة الدوامة، على بعد نحو 30 مليون سنة ضوئية',
-    education: 'نحو مجرة القبعة المكسيكية، على بعد نحو 30 مليون سنة ضوئية',
-    milkyway: 'العودة إلى درب التبانة، مجرّتنا',
-    sun: 'المجموعة الشمسية، في ذراع الجبّار من درب التبانة',
+    about: 'مجرة القبعة المكسيكية',
+    experience: 'مجرة الدوامة',
+    projects: 'مجرة المثلث',
+    education: 'المرأة المسلسلة، «اللطخة السحابية» عند الصوفي',
+    milkyway: 'درب التبانة، مجرّتنا',
+    sun: 'المجموعة الشمسية، في ذراع الجبّار',
     earth: 'الأرض، والفجر يبلغ عمّان',
     dawn: 'فجر عمّان',
   },
 };
+
+/**
+ * How far from Earth each place on the route is, in light-years. The galaxies come farthest
+ * first, so the whole journey is a return home: the Sombrero (31 million, McQuinn et al. 2016),
+ * the Whirlpool (28 million, same survey), Triangulum (2.7 million), Andromeda (2.5 million), then
+ * the Milky Way seen whole, the Solar System from a few light-hours out, and Earth from about
+ * 22,000 km.
+ */
+const LIGHT_YEAR_KM = 9.4607e12;
+const DISTANCE: Record<string, number> = {
+  about: 31e6,
+  experience: 28e6,
+  projects: 2.7e6,
+  education: 2.5e6,
+  milkyway: 1e5,
+  sun: 4 / (24 * 365.25),
+  earth: 22_000 / LIGHT_YEAR_KM,
+};
+
+// Units from largest to smallest: [light-years per unit, English, Arabic singular, dual, plural]
+const UNITS: [number, string, string, string, string][] = [
+  [1, 'light-year', 'سنة ضوئية', 'سنتان ضوئيتان', 'سنوات ضوئية'],
+  [1 / 365.25, 'light-day', 'يوم ضوئي', 'يومان ضوئيان', 'أيام ضوئية'],
+  [1 / 8766, 'light-hour', 'ساعة ضوئية', 'ساعتان ضوئيتان', 'ساعات ضوئية'],
+  [1 / 525_960, 'light-minute', 'دقيقة ضوئية', 'دقيقتان ضوئيتان', 'دقائق ضوئية'],
+  [1 / 31_557_600, 'light-second', 'ثانية ضوئية', 'ثانيتان ضوئيتان', 'ثوانٍ ضوئية'],
+];
+const group = (n: number) => Math.round(n).toLocaleString('en-US');
+/** Two significant figures: 31, 2.7, 0.45. */
+const round2 = (n: number) => (n >= 10 ? String(Math.round(n)) : String(Math.round(n * 10) / 10));
+
+/** "31 million light-years from Earth", "4 light-hours from Earth", "22,000 km from Earth". */
+function formatDistance(ly: number, lang: 'en' | 'ar') {
+  let amount: string;
+  if (ly >= 1e6) {
+    amount = lang === 'ar' ? `${round2(ly / 1e6)} مليون سنة ضوئية` : `${round2(ly / 1e6)} million light-years`;
+  } else if (ly >= 1000) {
+    const n = Number((ly).toPrecision(2));
+    amount = lang === 'ar' ? `${group(n)} سنة ضوئية` : `${group(n)} light-years`;
+  } else if (ly * LIGHT_YEAR_KM < 300_000) {
+    const km = Number((ly * LIGHT_YEAR_KM).toPrecision(2));
+    amount = lang === 'ar' ? `${group(km)} كم` : `${group(km)} km`;
+  } else {
+    const [per, en, one, two, few] = UNITS.find(([u]) => ly >= u) ?? UNITS[UNITS.length - 1];
+    const v = ly / per;
+    const n = v >= 10 ? Math.round(v) : Math.round(v * 10) / 10;
+    if (lang === 'ar') {
+      // Arabic counts: one and two take the noun alone, three to ten the plural, eleven up the singular
+      amount = n === 1 ? one : n === 2 ? two : Number.isInteger(n) && n >= 3 && n <= 10 ? `${n} ${few}` : `${n} ${one}`;
+    } else {
+      amount = `${n} ${en}${n === 1 ? '' : 's'}`;
+    }
+  }
+  return lang === 'ar' ? `على بُعد ${amount} من الأرض` : `${amount} from Earth`;
+}
 
 const clamp = (x: number, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const smooth = (a: number, b: number, x: number) => {
@@ -132,6 +188,10 @@ export function startJourney() {
   const sections = [...main.querySelectorAll<HTMLElement>(':scope > section[id]')];
   const contact = document.getElementById('contact');
   const viewCaption = document.getElementById('sky-view');
+  // The caption: where the camera is, and how far from Earth
+  const captionName = document.createElement('span');
+  const captionDistance = Object.assign(document.createElement('span'), { className: 'sky-distance' });
+  viewCaption?.replaceChildren(captionName, captionDistance);
   const heroCaption = document.getElementById('sky-caption');
   const skyline = document.querySelector<SVGSVGElement>('.skyline');
 
@@ -335,16 +395,36 @@ export function startJourney() {
 
   // The caption names where the camera is heading
   function caption(u: number) {
+    if (!viewCaption) return;
     const near = stops[Math.min(lastStop, Math.round(u))];
     const stage = Math.round(u) - lastStop - 1;
     const key =
       landing() > 0.35 ? 'dawn' : stage >= 0 ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)] : near.kind === 'hero' ? '' : near.section;
-    if (key !== captionKey && viewCaption) {
+    if (key !== captionKey) {
       captionKey = key;
       const text = (CAPTIONS[lang] as Record<string, string>)[key] ?? '';
-      viewCaption.textContent = text;
+      captionName.textContent = text;
       viewCaption.hidden = !text;
     }
+    // The distance from Earth counts down between places and holds while a stop is read
+    const ly = key === 'dawn' ? 0 : distanceAt(u);
+    const distance = ly > 0 ? formatDistance(ly, lang) : '';
+    if (distance !== captionDistance.textContent) captionDistance.textContent = distance;
+  }
+
+  /** Distance from Earth along the route: each stop's place, gliding on a log scale between them. */
+  function distanceAt(u: number) {
+    const at = (i: number) => {
+      const key = i > lastStop ? HOME_STAGES[Math.min(i - lastStop - 1, HOME_STAGES.length - 1)] : stops[i].section;
+      return DISTANCE[key] ?? NaN;
+    };
+    const s0 = Math.max(0, Math.floor(u));
+    const a = at(s0);
+    const b = at(Math.min(s0 + 1, lastStop + HOME_STAGES.length));
+    if (!Number.isFinite(a)) return b;
+    if (!Number.isFinite(b)) return a;
+    const t = smooth(HOLD, 1 - HOLD, u - s0);
+    return 10 ** (Math.log10(a) + (Math.log10(b) - Math.log10(a)) * t);
   }
 
   // The camera follows the scroll position with a little lag, so wheel steps glide

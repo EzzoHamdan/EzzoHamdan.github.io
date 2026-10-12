@@ -237,6 +237,18 @@ section h2 {
   display: none;
 }
 
+/* The journey's caption: the place, then its distance from Earth on its own line */
+.sky-view .sky-distance {
+  display: block;
+  padding-inline-start: calc(6px + 0.5rem);
+  font-variant-numeric: tabular-nums;
+  color: var(--starlight);
+}
+
+.sky-view .sky-distance:empty {
+  display: none;
+}
+
 /* ──────────────────────────────────────
    Header
    ────────────────────────────────────── */
