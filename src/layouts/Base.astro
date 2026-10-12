@@ -16,9 +16,11 @@ interface Props {
   ogType?: 'profile' | 'article' | 'website';
   jsonLd?: object;
   noindex?: boolean;
+  /** Dim, quiet sky for long-form reading (articles). */
+  calmSky?: boolean;
 }
 
-const { lang, title, description, canonical, alternates, ogType = 'website', jsonLd, noindex } = Astro.props;
+const { lang, title, description, canonical, alternates, ogType = 'website', jsonLd, noindex, calmSky } = Astro.props;
 const strings = ui[lang];
 const ogImage = new URL(`/og/${lang}.png`, site.url).href;
 // Escape "<" so JSON content can never close the <script> element early
@@ -81,7 +83,7 @@ const ld = jsonLd && JSON.stringify(jsonLd).replace(/</g, '\\u003c');
     }
     {ld && <script type="application/ld+json" is:inline set:html={ld} />}
   </head>
-  <body>
+  <body data-sky={calmSky ? 'calm' : undefined}>
     <a class="skip-link" href="#main">{strings.skip}</a>
     <Sky />
     <slot />

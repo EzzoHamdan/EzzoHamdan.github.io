@@ -10,6 +10,7 @@
   const label = document.getElementById('star-label') as HTMLElement;
   const lang = document.documentElement.lang === 'ar' ? 'ar' : 'en';
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  const calm = document.body.dataset.sky === 'calm';
   const size = () => ({ width: innerWidth, height: innerHeight, dpr: Math.min(devicePixelRatio || 1, 2) });
 
   function onSkyEvent(e: SkyEvent) {
@@ -37,12 +38,12 @@
       const worker = new Worker(new URL('../scripts/sky.worker.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<SkyEvent>) => onSkyEvent(event.data);
       const offscreen = canvas.transferControlToOffscreen();
-      worker.postMessage({ type: 'init', canvas: offscreen, ...size(), reducedMotion: motion.matches }, [offscreen]);
+      worker.postMessage({ type: 'init', canvas: offscreen, ...size(), reducedMotion: motion.matches, calm }, [offscreen]);
       return (msg) => worker.postMessage(msg);
     }
     const { createSky } = await import('../scripts/sky-renderer');
     const sky = createSky(canvas, onSkyEvent);
-    sky.handle({ type: 'init', ...size(), reducedMotion: motion.matches });
+    sky.handle({ type: 'init', ...size(), reducedMotion: motion.matches, calm });
     return (msg) => sky.handle(msg);
   }
 

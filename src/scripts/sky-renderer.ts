@@ -17,7 +17,7 @@ import { showers } from '../data/star-names';
 import { AMMAN, siderealTime, skyMoment } from './sky-time';
 
 export type SkyMessage =
-  | { type: 'init'; canvas?: OffscreenCanvas; width: number; height: number; dpr: number; reducedMotion: boolean }
+  | { type: 'init'; canvas?: OffscreenCanvas; width: number; height: number; dpr: number; reducedMotion: boolean; calm?: boolean }
   | { type: 'resize'; width: number; height: number; dpr: number }
   | { type: 'scroll'; progress: number }
   | { type: 'motion'; reduced: boolean }
@@ -127,7 +127,8 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   const glows = STAR_COLORS.map(starGlow);
 
   let w = 0, h = 0, dpr = 1, cx = 0, cy = 0, R = 1;
-  let reduced = false, visible = true, started = false;
+  // calm: article pages, where the sky stays dim and quiet behind long-form text
+  let reduced = false, visible = true, started = false, calm = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12);
   let progress = 0;
   let moment = skyMoment();
@@ -172,7 +173,9 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
 
   function drawSky(t: number) {
     // Full sky behind the hero, calmer behind reading sections, fading at the footer dawn
-    const dawn = (1 - 0.35 * smooth(0.04, 0.14, progress)) * (1 - 0.65 * smooth(0.82, 1, progress));
+    const dawn = calm
+      ? 0.5
+      : (1 - 0.35 * smooth(0.04, 0.14, progress)) * (1 - 0.65 * smooth(0.82, 1, progress));
 
     ctx.lineWidth = 0.7;
     ctx.strokeStyle = `${BRASS}${0.075 * dawn})`;
@@ -292,14 +295,15 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     drawSky(now / 1000);
     if (reduced) return;
     const shower = radiant.u > 0.05;
-    const rate = Math.max(1.5, Math.min(8, 6.7 * ((w * h) / (1440 * 900)))) * (shower ? 2.5 : 1);
+    const rate =
+      Math.max(1.5, Math.min(8, 6.7 * ((w * h) / (1440 * 900)))) * (shower ? 2.5 : 1) * (calm ? 0.2 : 1);
     spawnDebt += dt * rate;
     while (spawnDebt >= 1) {
       spawn({ fromRadiant: shower && Math.random() < 0.7 });
       spawnDebt -= 1;
     }
     nextBolide -= dt;
-    if (nextBolide <= 0) {
+    if (nextBolide <= 0 && !calm) {
       spawn({ bolide: true });
       nextBolide = rand(9, 16);
     }
@@ -344,6 +348,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
       switch (msg.type) {
         case 'init':
           reduced = msg.reducedMotion;
+          calm = !!msg.calm;
         // falls through
         case 'resize':
           w = msg.width;

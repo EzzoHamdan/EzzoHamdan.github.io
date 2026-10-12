@@ -5,6 +5,7 @@ export default defineConfig({
   site: 'https://ezzohamdan.github.io',
   trailingSlash: 'ignore',
   build: { format: 'directory' },
+  devToolbar: { enabled: false },
   i18n: {
     locales: ['en', 'ar'],
     defaultLocale: 'en',
