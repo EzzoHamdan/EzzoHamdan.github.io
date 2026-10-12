@@ -6,9 +6,10 @@
 //   curl -LO https://cdn.jsdelivr.net/gh/ofrohn/d3-celestial@master/data/starnames.json
 //   node scripts/make-sky-catalog.mjs <dir with those three files>
 //
-// Output: stars to magnitude 5 as [ra°, dec°, mag, colorIndex], constellation polylines as flat
-// [ra, dec, ra, dec, …] arrays, and the Arabic-named stars from src/data/star-names.ts with
-// their positions. Fails if a named star is missing from the catalog.
+// Output: stars to magnitude 5 as [ra°, dec°, mag, colorIndex]; constellations as
+// { id, rank, lines: flat [ra, dec, ra, dec, …] polylines, center: [ra, dec] } where center is
+// the label anchor (mean direction of the vertices); and the Arabic-named stars from
+// src/data/sky-names.ts with their positions. Fails if a named star is missing from the catalog.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -31,12 +32,26 @@ const stars = catalog
     return [ra(lon), r2(lat), +f.properties.mag.toFixed(1), colorIndex(parseFloat(f.properties.bv) || 0.6)];
   });
 
-const lines = read('constellations.lines.json').features.flatMap((f) =>
-  f.geometry.coordinates.map((line) => line.flatMap(([lon, lat]) => [ra(lon), r2(lat)])),
-);
+const RAD = Math.PI / 180;
+// Mean of unit vectors, so constellations that straddle RA 0h get a sensible center
+function center(points) {
+  let x = 0, y = 0, z = 0;
+  for (const [lon, lat] of points) {
+    x += Math.cos(lat * RAD) * Math.cos(lon * RAD);
+    y += Math.cos(lat * RAD) * Math.sin(lon * RAD);
+    z += Math.sin(lat * RAD);
+  }
+  return [ra(Math.atan2(y, x) / RAD), r2(Math.atan2(z, Math.hypot(x, y)) / RAD)];
+}
+const constellations = read('constellations.lines.json').features.map((f) => ({
+  id: f.id,
+  rank: Number(f.properties.rank),
+  lines: f.geometry.coordinates.map((line) => line.flatMap(([lon, lat]) => [ra(lon), r2(lat)])),
+  center: center(f.geometry.coordinates.flat()),
+}));
 
 // Names live in TypeScript; read the `en` values with a regex instead of importing TS here
-const namesSource = readFileSync(new URL('../src/data/star-names.ts', import.meta.url), 'utf8');
+const namesSource = readFileSync(new URL('../src/data/sky-names.ts', import.meta.url), 'utf8');
 const wanted = [...namesSource.matchAll(/\{ en: '([^']+)', origin:/g)].map((m) => m[1]);
 const names = read('starnames.json');
 const byId = new Map(catalog.map((f) => [String(f.id), f]));
@@ -48,6 +63,6 @@ const named = wanted.map((en) => {
   return { en, ra: ra(lon), dec: r2(lat) };
 });
 
-const out = { stars, lines, named };
+const out = { stars, constellations, named };
 writeFileSync(new URL('../src/data/sky.json', import.meta.url), JSON.stringify(out));
-console.log(`${stars.length} stars (mag ≤ ${MAX_MAG}), ${lines.length} constellation lines, ${named.length} named stars`);
+console.log(`${stars.length} stars (mag ≤ ${MAX_MAG}), ${constellations.length} constellations, ${named.length} named stars`);

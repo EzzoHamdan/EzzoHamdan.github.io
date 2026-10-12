@@ -1,4 +1,4 @@
-import { createSky, type SkyMessage } from './sky-renderer';
+import { createSky, type SkyMessage } from './renderer';
 
 let sky: ReturnType<typeof createSky> | undefined;
 

@@ -1,70 +1,139 @@
 <canvas id="sky" aria-hidden="true"></canvas>
+<div class="sky-labels" id="sky-labels" aria-hidden="true"></div>
 <div class="star-label" id="star-label" aria-hidden="true" hidden></div>
+<p class="sky-clock" id="sky-clock" aria-hidden="true" hidden>
+  <span class="sky-clock-label"></span>
+  <time class="sky-clock-time"></time>
+  <span class="sky-clock-note"></span>
+</p>
 
 <script>
-  import type { SkyEvent, SkyMessage } from '../scripts/sky-renderer';
-  import { showers, starNames } from '../data/star-names';
-  import { skyMoment } from '../scripts/sky-time';
+  import type { SkyEvent, SkyMessage } from '../scripts/sky/renderer';
+  import { constellationNames, showers, starNames } from '../data/sky-names';
 
   const canvas = document.getElementById('sky') as HTMLCanvasElement;
-  const label = document.getElementById('star-label') as HTMLElement;
+  const starLabel = document.getElementById('star-label') as HTMLElement;
+  const labelLayer = document.getElementById('sky-labels') as HTMLElement;
+  const clock = document.getElementById('sky-clock') as HTMLElement;
   const lang = document.documentElement.lang === 'ar' ? 'ar' : 'en';
-  const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const calm = document.body.dataset.sky === 'calm';
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const size = () => ({ width: innerWidth, height: innerHeight, dpr: Math.min(devicePixelRatio || 1, 2) });
+  const clockFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Amman', hour: '2-digit', minute: '2-digit' });
 
-  function onSkyEvent(e: SkyEvent) {
-    if (e.type !== 'hover') return;
-    if (e.index < 0) {
-      label.hidden = true;
+  const copy = {
+    en: {
+      now: 'The sky over Amman right now',
+      tonight: 'Tonight’s sky over Amman',
+      night: 'The sky over Amman',
+      dawn: 'Dawn over Amman',
+      shower: (name: string) => `The ${name} meteor shower peaks tonight`,
+    },
+    ar: {
+      now: 'سماء عمّان الآن',
+      tonight: 'سماء عمّان الليلة',
+      night: 'سماء عمّان',
+      dawn: 'فجر عمّان',
+      shower: (name: string) => `ذروة زخّة ${name} الليلة`,
+    },
+  }[lang];
+
+  // Text the labels must never sit on: tight line boxes of the hero copy, plus the controls
+  function obstacles() {
+    const rects: DOMRect[] = [];
+    document.querySelectorAll('.site-header, .hero-actions > *').forEach((el) => rects.push(el.getBoundingClientRect()));
+    document.querySelectorAll('.hero-name, .hero-role, .hero-lede, .stats li > *').forEach((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      rects.push(...range.getClientRects());
+    });
+    return rects;
+  }
+
+  // Constellation labels: one element each, created on first use and moved with transforms
+  const labelEls = new Map<string, { el: HTMLElement; w: number; h: number }>();
+  function showLabels(items: { id: string; x: number; y: number; a: number }[]) {
+    const seen = new Set<string>();
+    const blocked = items.length ? obstacles() : [];
+    for (const { id, x, y, a } of items) {
+      let label = labelEls.get(id);
+      if (!label) {
+        const el = document.createElement('span');
+        el.className = 'constellation-label';
+        el.textContent = constellationNames[id][lang];
+        labelLayer.append(el);
+        label = { el, w: el.offsetWidth, h: el.offsetHeight };
+        labelEls.set(id, label);
+      }
+      const left = x - label.w / 2 - 10;
+      const right = x + label.w / 2 + 10;
+      const top = y - label.h / 2 - 6;
+      const bottom = y + label.h / 2 + 6;
+      const clipped = left < 0 || right > innerWidth || top < 0 || bottom > innerHeight;
+      const hidden = clipped || blocked.some((r) => left < r.right && right > r.left && top < r.bottom && bottom > r.top);
+      label.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+      label.el.style.opacity = hidden ? '0' : String(a);
+      seen.add(id);
+    }
+    labelEls.forEach(({ el }, id) => {
+      if (!seen.has(id)) el.style.opacity = '0';
+    });
+  }
+
+  function showStar(index: number, x: number, y: number) {
+    if (index < 0) {
+      starLabel.hidden = true;
       return;
     }
-    const star = starNames[e.index];
-    label.replaceChildren();
+    const star = starNames[index];
     const name = document.createElement('strong');
     name.textContent = lang === 'ar' ? star.ar : star.en;
-    label.append(name);
+    starLabel.replaceChildren(name);
     if (lang === 'en') {
       const origin = document.createElement('span');
       origin.textContent = `from ${star.origin}`;
-      label.append(origin);
+      starLabel.append(origin);
     }
-    label.style.transform = `translate(${e.x + 14}px, ${e.y - 10}px)`;
-    label.hidden = false;
+    starLabel.style.transform = `translate(${x + 14}px, ${y - 10}px)`;
+    starLabel.hidden = false;
+  }
+
+  function showTime(e: Extract<SkyEvent, { type: 'time' }>) {
+    if (calm) return;
+    const label = e.dawn > 0.5 ? copy.dawn : e.start ? copy[e.mode] : copy.night;
+    clock.querySelector('.sky-clock-label')!.textContent = label;
+    const time = clock.querySelector('time')!;
+    time.textContent = clockFormat.format(e.ms);
+    time.dateTime = new Date(e.ms).toISOString();
+    const shower = showers[e.shower];
+    clock.querySelector('.sky-clock-note')!.textContent = shower ? copy.shower(shower[lang]) : '';
+    clock.style.setProperty('--dawn-amount', String(e.dawn));
+    clock.hidden = false;
+  }
+
+  function onSkyEvent(e: SkyEvent) {
+    if (e.type === 'hover') showStar(e.index, e.x, e.y);
+    else if (e.type === 'labels') showLabels(e.items);
+    else if (e.type === 'time') showTime(e);
   }
 
   async function connect(): Promise<(msg: SkyMessage) => void> {
+    const init = { ...size(), reducedMotion: motion.matches, calm };
     if ('transferControlToOffscreen' in canvas) {
-      const worker = new Worker(new URL('../scripts/sky.worker.ts', import.meta.url), { type: 'module' });
+      const worker = new Worker(new URL('../scripts/sky/worker.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<SkyEvent>) => onSkyEvent(event.data);
       const offscreen = canvas.transferControlToOffscreen();
-      worker.postMessage({ type: 'init', canvas: offscreen, ...size(), reducedMotion: motion.matches, calm }, [offscreen]);
+      worker.postMessage({ type: 'init', canvas: offscreen, ...init }, [offscreen]);
       return (msg) => worker.postMessage(msg);
     }
-    const { createSky } = await import('../scripts/sky-renderer');
+    const { createSky } = await import('../scripts/sky/renderer');
     const sky = createSky(canvas, onSkyEvent);
-    sky.handle({ type: 'init', ...size(), reducedMotion: motion.matches, calm });
+    sky.handle({ type: 'init', ...init });
     return (msg) => sky.handle(msg);
-  }
-
-  function writeCaption() {
-    const caption = document.getElementById('sky-caption');
-    if (!caption) return;
-    const { mode, time, shower } = skyMoment();
-    const clock = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Amman', hour: '2-digit', minute: '2-digit' }).format(time);
-    const lines =
-      lang === 'ar'
-        ? [mode === 'now' ? `سماء عمّان الآن، ${clock}` : `سماء عمّان الليلة، ${clock}`]
-        : [mode === 'now' ? `The sky over Amman right now, ${clock}` : `Tonight’s sky over Amman, ${clock}`];
-    const s = showers[shower];
-    if (s) lines.push(lang === 'ar' ? `ذروة زخّة ${s.ar} الليلة` : `The ${s.en} meteor shower peaks tonight`);
-    caption.replaceChildren(...lines.map((text) => Object.assign(document.createElement('span'), { textContent: text })));
-    caption.hidden = false;
   }
 
   async function start() {
     const post = await connect();
-    writeCaption();
 
     let last = size();
     let resizeTimer: ReturnType<typeof setTimeout>;
@@ -79,21 +148,26 @@
       }, 150);
     });
 
-    // Scrolling advances the night: the whole page spans six hours of sky
+    // The page is one night: scrolling from top to bottom runs the sky from now to dawn
     let ticking = false;
+    const onScroll = () => {
+      ticking = false;
+      const max = document.documentElement.scrollHeight - innerHeight;
+      const progress = max > 0 ? Math.min(1, scrollY / max) : 0;
+      post({ type: 'scroll', progress });
+      // On small screens the clock only shows at dawn, where it has room, never over reading text
+      clock.dataset.show = progress > 0.88 ? 'yes' : 'no';
+    };
     addEventListener(
       'scroll',
       () => {
         if (ticking) return;
         ticking = true;
-        requestAnimationFrame(() => {
-          const max = document.documentElement.scrollHeight - innerHeight;
-          post({ type: 'scroll', progress: max > 0 ? Math.min(1, scrollY / max) : 0 });
-          ticking = false;
-        });
+        requestAnimationFrame(onScroll);
       },
       { passive: true },
     );
+    onScroll();
 
     // Star names on hover, only over empty sky so reading is never interrupted
     if (matchMedia('(hover: hover)').matches) {
@@ -107,14 +181,6 @@
 
     document.addEventListener('visibilitychange', () => post({ type: 'visible', visible: !document.hidden }));
     motion.addEventListener('change', () => post({ type: 'motion', reduced: motion.matches }));
-
-    // Opening moment: one bright shooting star crosses the name
-    const name = document.querySelector('.hero-name');
-    if (name) {
-      await document.fonts.ready;
-      const r = name.getBoundingClientRect();
-      post({ type: 'intro', x: r.left + r.width * 0.55, y: r.top - 12 });
-    }
   }
 
   // Wait until the page has painted so the sky never competes with the content

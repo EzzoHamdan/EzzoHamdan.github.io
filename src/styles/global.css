@@ -208,6 +208,77 @@ section h2 {
   color: var(--haze);
 }
 
+/* Constellation names over the sky at the top of the page, positioned by the sky worker */
+.sky-labels {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.constellation-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: rgba(201, 161, 91, 0.85);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+:lang(ar) .constellation-label {
+  letter-spacing: 0;
+  font-size: var(--tiny);
+}
+
+/* The running clock: the night passing as the page scrolls */
+.sky-clock {
+  position: fixed;
+  inset-inline-end: var(--gutter);
+  bottom: 1.25rem;
+  z-index: 40;
+  display: grid;
+  justify-items: end;
+  gap: 0.1rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(7, 11, 26, 0.62);
+  font-size: var(--tiny);
+  color: var(--haze);
+  text-align: end;
+  transition: opacity 0.4s;
+}
+
+.sky-clock[hidden] {
+  display: none;
+}
+
+.sky-clock-label::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-inline-end: 0.5rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brass), var(--dawn) calc(var(--dawn-amount, 0) * 100%));
+  box-shadow: 0 0 8px var(--brass);
+  vertical-align: middle;
+}
+
+.sky-clock-time {
+  font-family: var(--font-heading);
+  font-size: var(--step-1);
+  color: var(--starlight);
+  font-variant-numeric: tabular-nums;
+}
+
+.sky-clock-note:empty {
+  display: none;
+}
+
 /* ──────────────────────────────────────
    Header
    ────────────────────────────────────── */
@@ -391,33 +462,6 @@ section h2 {
   font-size: var(--tiny);
   color: var(--haze);
   margin-top: 0.25rem;
-}
-
-.sky-caption {
-  position: absolute;
-  inset-inline-end: var(--gutter);
-  bottom: 1.75rem;
-  display: grid;
-  justify-items: end;
-  font-size: var(--tiny);
-  color: var(--haze);
-  text-align: end;
-}
-
-.sky-caption span:first-child::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-inline-end: 0.5rem;
-  border-radius: 50%;
-  background: var(--brass);
-  box-shadow: 0 0 8px var(--brass);
-  vertical-align: middle;
-}
-
-.sky-caption[hidden] {
-  display: none;
 }
 
 /* The single orchestrated moment: the hero settles in once */
@@ -1058,11 +1102,12 @@ section h2 {
     gap: 0.1rem;
   }
 
-  .sky-caption {
-    position: static;
-    justify-items: start;
-    text-align: start;
-    margin: 2.5rem var(--gutter) 0;
+  .sky-clock {
+    bottom: 0.75rem;
+  }
+
+  .sky-clock[data-show='no'] {
+    opacity: 0;
   }
 }
 
