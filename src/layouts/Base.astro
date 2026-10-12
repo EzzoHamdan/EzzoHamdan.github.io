@@ -41,7 +41,7 @@ const ld = jsonLd && JSON.stringify(jsonLd).replace(/</g, '\\u003c');
         ))
     }
     {alternates?.en && <link rel="alternate" hreflang="x-default" href={alternates.en} />}
-    <meta name="theme-color" content="#030014" />
+    <meta name="theme-color" content="#070b1a" />
     <meta name="color-scheme" content="dark" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Summary for AI agents (llms.txt)" />
@@ -68,12 +68,17 @@ const ld = jsonLd && JSON.stringify(jsonLd).replace(/</g, '\\u003c');
 
     {
       lang === 'ar' ? (
-        <Font cssVariable="--font-arabic" preload={[{ subset: 'arabic' }]} />
+        <>
+          <Font cssVariable="--font-kufi" preload />
+          <Font cssVariable="--font-text" preload={[{ subset: 'arabic', weight: 300 }]} />
+        </>
       ) : (
-        <Font cssVariable="--font-display" preload />
+        <>
+          <Font cssVariable="--font-display" preload />
+          <Font cssVariable="--font-text" preload={[{ subset: 'latin', weight: 300 }]} />
+        </>
       )
     }
-    <Font cssVariable="--font-code" />
     {ld && <script type="application/ld+json" is:inline set:html={ld} />}
   </head>
   <body>

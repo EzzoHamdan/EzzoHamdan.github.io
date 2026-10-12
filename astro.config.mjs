@@ -12,30 +12,33 @@ export default defineConfig({
   },
   fonts: [
     {
+      // Inscriptional capitals, like the lettering engraved on astrolabes
       provider: fontProviders.fontsource(),
-      name: 'Space Grotesk',
+      name: 'Marcellus',
       cssVariable: '--font-display',
-      weights: ['300 700'],
-      styles: ['normal'],
-      subsets: ['latin'],
-      fallbacks: ['sans-serif'],
-    },
-    {
-      provider: fontProviders.fontsource(),
-      name: 'JetBrains Mono',
-      cssVariable: '--font-code',
       weights: [400],
       styles: ['normal'],
       subsets: ['latin'],
-      fallbacks: ['monospace'],
+      fallbacks: ['serif'],
     },
     {
+      // Geometric Kufic for Arabic headings
+      provider: fontProviders.fontsource(),
+      name: 'Reem Kufi',
+      cssVariable: '--font-kufi',
+      weights: ['400 700'],
+      styles: ['normal'],
+      subsets: ['arabic'],
+      fallbacks: ['sans-serif'],
+    },
+    {
+      // Body text in both scripts, designed together
       provider: fontProviders.fontsource(),
       name: 'Readex Pro',
-      cssVariable: '--font-arabic',
-      weights: ['300 700'],
+      cssVariable: '--font-text',
+      weights: ['200 700'],
       styles: ['normal'],
-      subsets: ['arabic', 'latin'],
+      subsets: ['latin', 'arabic'],
       fallbacks: ['sans-serif'],
     },
   ],

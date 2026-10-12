@@ -1,9 +1,9 @@
 ---
-import { Image } from 'astro:assets';
 import Base from '../layouts/Base.astro';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
 import Council from './Council.astro';
+import Skyline from './Skyline.astro';
 import Icon from './Icon.astro';
 import {
   certifications,
@@ -30,8 +30,10 @@ const title =
   lang === 'en'
     ? `${person.name.en} — ${person.role.en} in ${person.location.en}`
     : `${person.name.ar} — ${person.role.ar} في ${person.location.ar}`;
-const orgNames = (keys: (keyof typeof orgs)[], sep: string) => keys.map((k) => t(orgs[k].name, lang)).join(sep);
+const roleLine = lang === 'en' ? `AI engineer in ${person.location.en}` : `${person.role.ar} في ${person.location.ar}`;
 const and = lang === 'en' ? ' and ' : ' و';
+const comma = lang === 'en' ? ', ' : '، ';
+const orgNames = (keys: (keyof typeof orgs)[]) => keys.map((k) => t(orgs[k].name, lang)).join(and);
 const current = experience.find((r) => r.end === null)!;
 const previous = experience.filter((r) => r.end !== null);
 ---
@@ -49,26 +51,25 @@ const previous = experience.filter((r) => r.end !== null);
 
   <main id="main">
     <section id="hero" aria-labelledby="hero-name">
-      <div class="hero-content">
+      <div class="container hero">
         <h1 class="hero-name" id="hero-name">{t(person.name, lang)}</h1>
-        <p class="hero-role">{t(person.role, lang)}</p>
+        <p class="hero-role">{roleLine}</p>
         <p class="hero-lede">{t(person.summary, lang)}</p>
-        <div class="hero-meta">
-          <span class="location"><Icon name="pin" />{s.location}</span>
-          <a class="btn btn-secondary" href={site.links.linkedin} rel="me noopener" target="_blank">
-            <Icon name="linkedin" />{lang === 'en' ? 'LinkedIn' : 'لينكدإن'}
-          </a>
-          <a class="btn btn-secondary" href={site.links.github} rel="me noopener" target="_blank">
-            <Icon name="github" />{lang === 'en' ? 'GitHub' : 'غيت هب'}
-          </a>
-          <a class="btn btn-primary" href={site.cv} download hreflang="en" type="application/pdf">
+        <div class="hero-actions">
+          <a class="btn" href={site.cv} download hreflang="en" type="application/pdf">
             <Icon name="download" />{s.downloadCv}
           </a>
+          <a class="text-link" href={site.links.linkedin} rel="me noopener" target="_blank">
+            <Icon name="linkedin" />{lang === 'en' ? 'LinkedIn' : 'لينكدإن'}
+          </a>
+          <a class="text-link" href={site.links.github} rel="me noopener" target="_blank">
+            <Icon name="github" />{lang === 'en' ? 'GitHub' : 'غيت هب'}
+          </a>
         </div>
-        <ul class="highlights">
+        <ul class="stats">
           {
             highlights.map((h) => (
-              <li class="highlight">
+              <li>
                 <strong>{t(h.value, lang)}</strong>
                 <span>{t(h.label, lang)}</span>
               </li>
@@ -76,68 +77,45 @@ const previous = experience.filter((r) => r.end !== null);
           }
         </ul>
       </div>
+      <p class="sky-caption" id="sky-caption" hidden></p>
     </section>
 
     <section id="about" aria-labelledby="about-title">
-      <div class="container">
-        <p class="section-label">{s.sections.about.label}</p>
-        <h2 class="section-title" id="about-title">{s.sections.about.title}</h2>
-        <div class="about">
-          <div class="about-text reveal">
+      <div class="container two-col">
+        <div>
+          <h2 id="about-title">{s.sections.about.title}</h2>
+          <div class="about-text">
             {t(person.about, lang).map((p) => <p>{p}</p>)}
           </div>
-          <dl class="facts card reveal">
-            <dt>{s.facts.role}</dt>
-            <dd>{t(person.role, lang)}</dd>
-            <dt>{s.facts.basedIn}</dt>
-            <dd>{s.location}</dd>
-            <dt>{s.facts.current}</dt>
-            <dd>{t(current.title, lang)}, {s.since} {formatMonth(current.start, lang)}</dd>
-            <dt>{s.facts.previously}</dt>
-            <dd>{previous.map((r) => t(orgs[r.orgs[0]].name, lang)).join(lang === 'en' ? ', ' : '، ')}</dd>
-            <dt>{s.facts.education}</dt>
-            <dd>
-              {t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})
-            </dd>
-            <dt>{s.facts.focus}</dt>
-            <dd>{t(person.knowsAbout, lang).slice(0, 4).join(lang === 'en' ? ', ' : '، ')}</dd>
-            <dt>{s.facts.languages}</dt>
-            <dd>{t(person.languages, lang)}</dd>
-            <dt>{s.facts.openTo}</dt>
-            <dd>{t(person.openTo, lang)}</dd>
-            <dt>{s.facts.contact}</dt>
-            <dd><a href={`mailto:${site.email}`}>{site.email}</a></dd>
-          </dl>
         </div>
+        <dl class="facts">
+          <div><dt>{s.facts.role}</dt><dd>{t(person.role, lang)}</dd></div>
+          <div><dt>{s.facts.basedIn}</dt><dd>{s.location}</dd></div>
+          <div><dt>{s.facts.current}</dt><dd>{t(current.title, lang)}, {s.since} {formatMonth(current.start, lang)}</dd></div>
+          <div><dt>{s.facts.previously}</dt><dd>{previous.map((r) => t(orgs[r.orgs[0]].name, lang)).join(comma)}</dd></div>
+          <div><dt>{s.facts.education}</dt><dd>{t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})</dd></div>
+          <div><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).slice(0, 4).join(comma)}</dd></div>
+          <div><dt>{s.facts.languages}</dt><dd>{t(person.languages, lang)}</dd></div>
+          <div><dt>{s.facts.openTo}</dt><dd>{t(person.openTo, lang)}</dd></div>
+          <div><dt>{s.facts.contact}</dt><dd><a href={`mailto:${site.email}`}>{site.email}</a></dd></div>
+        </dl>
       </div>
     </section>
 
     <section id="experience" aria-labelledby="experience-title">
       <div class="container">
-        <p class="section-label">{s.sections.experience.label}</p>
-        <h2 class="section-title" id="experience-title">{s.sections.experience.title}</h2>
-        <ol class="timeline">
+        <h2 id="experience-title">{s.sections.experience.title}</h2>
+        <ol class="constellation">
           {
             experience.map((role) => (
-              <li>
-                <article class="card reveal">
-                  <div class="role-head">
-                    <Image src={role.logo} alt="" width={72} densities={[1, 2]} class="logo" />
-                    <div class="role-title">
-                      <div class="role-title-row">
-                        <div>
-                          <h3>{t(role.title, lang)}</h3>
-                          <p class="role-org">{orgNames(role.orgs, and)}</p>
-                        </div>
-                        <time class="period" datetime={role.start}>
-                          {formatPeriod(role.start, role.end, lang)}
-                        </time>
-                      </div>
-                      <ul class="tags">
-                        {role.tags.map((x) => <li class="tag">{tag(x, lang)}</li>)}
-                      </ul>
-                    </div>
-                  </div>
+              <li class="role">
+                <time class="role-when" datetime={role.start}>
+                  {formatPeriod(role.start, role.end, lang)}
+                </time>
+                <span class="role-star" aria-hidden="true" />
+                <div class="role-body">
+                  <h3>{t(role.title, lang)}</h3>
+                  <p class="role-org">{orgNames(role.orgs)}</p>
                   {role.summary && <p class="role-summary">{t(role.summary, lang)}</p>}
                   {role.groups?.map((g) => (
                     <div class="role-group">
@@ -147,7 +125,10 @@ const previous = experience.filter((r) => r.end !== null);
                       </ul>
                     </div>
                   ))}
-                </article>
+                  <ul class="tags">
+                    {role.tags.map((x) => <li>{tag(x, lang)}</li>)}
+                  </ul>
+                </div>
               </li>
             ))
           }
@@ -157,18 +138,17 @@ const previous = experience.filter((r) => r.end !== null);
 
     <section id="projects" aria-labelledby="projects-title">
       <div class="container">
-        <p class="section-label">{s.sections.projects.label}</p>
-        <h2 class="section-title" id="projects-title">{s.sections.projects.title}</h2>
+        <h2 id="projects-title">{s.sections.projects.title}</h2>
         <div class="projects">
           {
             projects.map((p) => (
-              <article class:list={['project-card', 'card', 'reveal', { featured: p.featured }]} id={`project-${p.id}`}>
-                <div class="project">
+              <article class:list={['project', { featured: p.featured }]} id={`project-${p.id}`}>
+                <div class="project-text">
                   <p class="project-context">{t(p.context, lang)}</p>
                   <h3>{t(p.name, lang)}</h3>
                   <p class="project-desc">{t(p.description, lang)}</p>
                   <ul class="tags">
-                    {p.tech.map((x) => <li class="tag">{x}</li>)}
+                    {p.tech.map((x) => <li>{x}</li>)}
                   </ul>
                   <div class="project-links">
                     {p.links.map((l) => (
@@ -188,68 +168,55 @@ const previous = experience.filter((r) => r.end !== null);
     </section>
 
     <section id="education" aria-labelledby="education-title">
-      <div class="container">
-        <p class="section-label">{s.sections.education.label}</p>
-        <h2 class="section-title" id="education-title">{s.sections.education.title}</h2>
-        <article class="education card reveal">
-          <div class="role-head">
-            <Image src={education.logo} alt="" width={72} densities={[1, 2]} class="logo" />
-            <div class="role-title">
-              <div class="role-title-row">
-                <div>
-                  <h3>{t(education.degree, lang)}</h3>
-                  <p class="role-org">{t(orgs[education.org].name, lang)}</p>
-                </div>
-                <span class="period">{education.start} – {education.end}</span>
-              </div>
-              <ul class="badges">
-                {education.badges.map((b) => <li class="badge">{t(b, lang)}</li>)}
-              </ul>
-            </div>
-          </div>
-          <ul class="bullets">
-            {t(education.highlights, lang).map((b) => <li>{b}</li>)}
+      <div class="container two-col">
+        <div>
+          <h2 id="education-title">{s.sections.education.title}</h2>
+          <article class="degree">
+            <h3>{t(education.degree, lang)}</h3>
+            <p class="role-org">{t(orgs[education.org].name, lang)}, {education.start} – {education.end}</p>
+            <p class="degree-badges">{education.badges.map((b) => t(b, lang)).join(comma)}</p>
+            <ul class="bullets">
+              {t(education.highlights, lang).map((b) => <li>{b}</li>)}
+            </ul>
+          </article>
+        </div>
+        <div>
+          <h3 class="certs-title">{s.sections.certifications}</h3>
+          <ul class="certs">
+            {
+              certifications.map((c) => (
+                <li>
+                  <div class="cert-head">
+                    <h4>{t(c.name, lang)}</h4>
+                    <time datetime={c.date}>{formatMonth(c.date, lang)}</time>
+                  </div>
+                  <p class="cert-org">{t(orgs[c.org].name, lang)}</p>
+                  <p class="cert-note">{t(c.note, lang)}</p>
+                </li>
+              ))
+            }
           </ul>
-        </article>
-
-        <h3 class="certs-title">{s.sections.certifications}</h3>
-        <ul class="certs">
-          {
-            certifications.map((c) => (
-              <li class="cert card reveal">
-                <div class="cert-head">
-                  <h4>{t(c.name, lang)}</h4>
-                  <time class="period" datetime={c.date}>
-                    {formatMonth(c.date, lang)}
-                  </time>
-                </div>
-                <p class="cert-org">{t(orgs[c.org].name, lang)}</p>
-                <p class="cert-note">{t(c.note, lang)}</p>
-              </li>
-            ))
-          }
-        </ul>
+        </div>
       </div>
     </section>
 
-    <section id="contact" aria-labelledby="contact-title">
-      <div class="container">
-        <div class="contact card reveal">
-          <h2 id="contact-title">{s.contact.title}</h2>
-          <p>{lang === 'en' ? 'Open to ' : 'منفتح على '}{t(person.openTo, lang)}.</p>
-          <div class="contact-links">
-            <a class="btn btn-primary" href={site.links.linkedin} rel="me noopener" target="_blank">
-              <Icon name="linkedin" />{s.contact.linkedin}
-            </a>
-            <a class="btn btn-secondary" href={site.links.github} rel="me noopener" target="_blank">
-              <Icon name="github" />{s.contact.github}
-            </a>
-            <a class="btn btn-secondary" href={`mailto:${site.email}`}>
-              <Icon name="mail" />{s.contact.email}
-            </a>
-          </div>
+    <section id="contact" class="dawn" aria-labelledby="contact-title">
+      <div class="container contact">
+        <h2 id="contact-title">{s.contact.title}</h2>
+        <p>{lang === 'en' ? 'Open to ' : 'منفتح على '}{t(person.openTo, lang)}.</p>
+        <div class="hero-actions">
+          <a class="btn" href={`mailto:${site.email}`}>
+            <Icon name="mail" />{s.contact.email}
+          </a>
+          <a class="text-link" href={site.links.linkedin} rel="me noopener" target="_blank">
+            <Icon name="linkedin" />{s.contact.linkedin}
+          </a>
+          <a class="text-link" href={site.links.github} rel="me noopener" target="_blank">
+            <Icon name="github" />{s.contact.github}
+          </a>
         </div>
       </div>
+      <Skyline />
     </section>
   </main>
 

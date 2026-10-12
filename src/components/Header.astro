@@ -1,6 +1,6 @@
 ---
 import Icon from './Icon.astro';
-import type { Lang } from '../data/profile';
+import { person, type Lang } from '../data/profile';
 import { ui } from '../lib/i18n';
 
 interface Props {
@@ -14,9 +14,7 @@ interface Props {
 const { lang, otherLangHref, sections = true } = Astro.props;
 const s = ui[lang];
 const other = lang === 'en' ? 'ar' : 'en';
-const home = ui[lang].path;
 const links = [
-  ['hero', s.nav.home],
   ['experience', s.nav.experience],
   ['projects', s.nav.projects],
   ['education', s.nav.education],
@@ -25,25 +23,27 @@ const links = [
 ---
 
 <header class="site-header">
-  <nav class="site-nav" aria-label={s.navLabel}>
-    {
-      sections
-        ? links.map(([id, label]) => (
+  <div class="header-inner">
+    <a class="brand" href={sections ? '#hero' : ui[lang].path}>{person.name[lang]}</a>
+    <nav class="site-nav" aria-label={s.navLabel}>
+      {
+        sections &&
+          links.map(([id, label]) => (
             <a href={`#${id}`} class="nav-link" data-section={id}>
               {label}
             </a>
           ))
-        : <a href={home} class="nav-link">{s.nav.home}</a>
-    }
-    {
-      otherLangHref && (
-        <a href={otherLangHref} class="lang-link" hreflang={other} title={s.otherLang.title}>
-          <Icon name="globe" />
-          {s.otherLang.label}
-        </a>
-      )
-    }
-  </nav>
+      }
+      {
+        otherLangHref && (
+          <a href={otherLangHref} class="lang-link" hreflang={other} title={s.otherLang.title}>
+            <Icon name="globe" />
+            {s.otherLang.label}
+          </a>
+        )
+      }
+    </nav>
+  </div>
 </header>
 
 {

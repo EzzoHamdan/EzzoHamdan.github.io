@@ -1,0 +1,59 @@
+---
+// Stylized Amman at dawn: two hill ranges covered in stone-box houses, the Citadel's Temple of
+// Hercules columns, the Jordan Gate towers and the Raghadan flagpole. Generated deterministically
+// at build time, so the SVG is the same on every build.
+const W = 1440;
+const H = 220;
+
+let seed = 31;
+const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+const backY = (x: number) => 128 - 14 * Math.sin(x / 210) - 8 * Math.sin(x / 83 + 1.3);
+const frontY = (x: number) => 172 - 9 * Math.sin(x / 170 + 2) - 5 * Math.sin(x / 61);
+
+const hill = (f: (x: number) => number) => {
+  let d = `M0 ${H} L0 ${f(0).toFixed(1)}`;
+  for (let x = 20; x <= W; x += 20) d += ` L${x} ${f(x).toFixed(1)}`;
+  return `${d} L${W} ${H} Z`;
+};
+
+function houses(f: (x: number) => number, minH: number, maxH: number, gap: number) {
+  const out: { x: number; y: number; w: number; h: number; lit: { x: number; y: number }[] }[] = [];
+  for (let x = 0; x < W; ) {
+    const w = 10 + rand() * 18;
+    const h = minH + rand() * (maxH - minH);
+    const base = f(x + w / 2) + 2;
+    const lit = [];
+    if (rand() < 0.35) lit.push({ x: x + 3 + rand() * (w - 7), y: base - h + 3 + rand() * (h - 7) });
+    out.push({ x, y: base - h, w, h, lit });
+    x += w + rand() * gap;
+  }
+  return out;
+}
+
+const back = houses(backY, 8, 20, 10);
+const front = houses(frontY, 10, 26, 4);
+const citadelX = 330;
+const gateX = 770;
+const flagX = 1110;
+---
+
+<svg class="skyline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+  <g class="skyline-back">
+    <path d={hill(backY)}></path>
+    {back.map((b) => <rect x={b.x.toFixed(1)} y={b.y.toFixed(1)} width={b.w.toFixed(1)} height={b.h.toFixed(1)} />)}
+    {[0, 1, 2, 3, 4, 5].map((i) => <rect x={citadelX + i * 11} y={backY(citadelX) - 46} width="5" height="42" />)}
+    <rect x={citadelX - 4} y={backY(citadelX) - 50} width="68" height="5"></rect>
+    <rect x={citadelX - 8} y={backY(citadelX) - 5} width="76" height="8"></rect>
+    <rect x={gateX} y={backY(gateX) - 118} width="20" height="120"></rect>
+    <rect x={gateX + 34} y={backY(gateX + 34) - 104} width="20" height="106"></rect>
+    <rect x={flagX} y={backY(flagX) - 140} width="2.5" height="142"></rect>
+    <path class="flag" d={`M${flagX + 2.5} ${backY(flagX) - 138} h46 v28 h-46 z`}></path>
+    {back.flatMap((b) => b.lit).map((l) => <rect class="lit" x={l.x.toFixed(1)} y={l.y.toFixed(1)} width="2.4" height="3" />)}
+  </g>
+  <g class="skyline-front">
+    <path d={hill(frontY)}></path>
+    {front.map((b) => <rect x={b.x.toFixed(1)} y={b.y.toFixed(1)} width={b.w.toFixed(1)} height={b.h.toFixed(1)} />)}
+    {front.flatMap((b) => b.lit).map((l) => <rect class="lit" x={l.x.toFixed(1)} y={l.y.toFixed(1)} width="2.4" height="3" />)}
+  </g>
+</svg>
