@@ -95,7 +95,7 @@ nothing deploys from a feature branch.
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
-| Amman at dawn (landmarks, mist, the flag, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
+| Amman at dawn (landmarks, Abu Darwish Mosque, green-lit minarets, beacons, pigeons, mist, the flag, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
 | Blog schema and routes | [`src/content.config.ts`](src/content.config.ts), [`src/pages/blog/`](src/pages/blog/) |
 | Post-build checks | [`scripts/check-dist.mjs`](scripts/check-dist.mjs) |
@@ -208,18 +208,36 @@ Every stop does the same three things:
 | **Hold** (±`HOLD` = 0.2 stop) | Flat, centered, no transform, fully crisp: where reading happens. Only this plane is visible. | Almost still (`CREEP`) |
 | **Depart** | Peels off to its side and fades (titles rise overhead). The hero instead sinks away below and tilts like the ground at takeoff, over a longer first leg (`WEIGHT.hero`) | Moves on |
 
-| Section | Heads for (`sky/journey.ts::DESTINATIONS`) | Space tinted |
-| --- | --- | --- |
-| `hero` | Takeoff: the real sky over Amman straight up; the stars stream past as the atmosphere falls away, and stop twinkling | Night over Amman |
-| `about` | Andromeda, al-Sufi's "little cloud" (2.5 million light-years), with M32 and M110 | Violet |
-| `experience` | The Triangulum galaxy (2.7 million) | Teal |
-| `projects` | The Whirlpool and its companion NGC 5195 (about 30 million) | Magenta |
-| `education` | The Sombrero, its dust lane edge-on (about 30 million) | Amber |
-| *(after the last stop)* | The homecoming, below | Space, then dawn |
-| `contact` | Dawn over Amman with shooting stars, some falling behind the skyline, as in the dome | Dawn |
+The galaxies come **farthest first**, so the whole flight is a return to Earth (owner's request):
+
+| Section | Passes (`sky/journey.ts::DESTINATIONS`) | From Earth (`journey.ts::DISTANCE`) | Space tinted |
+| --- | --- | --- | --- |
+| `hero` | Takeoff: the real sky over Amman straight up; the stars stream past as the atmosphere falls away, and stop twinkling | (Amman) | Night over Amman |
+| `about` | The Sombrero, its dust lane edge-on | 31 million light-years | Amber |
+| `experience` | The Whirlpool and its companion NGC 5195 | 28 million | Magenta |
+| `projects` | The Triangulum galaxy | 2.7 million | Teal |
+| `education` | Andromeda, al-Sufi's "little cloud", with M32 and M110 | 2.5 million | Violet |
+| *(after the last stop)* | The homecoming, below | 100,000 light-years, 4 light-hours, 22,000 km | Space, then dawn |
+| `contact` | Dawn over Amman with shooting stars, some falling behind the skyline, as in the dome | (home) | Dawn |
 
 Each galaxy is far behind its section's title, grows as the section is read, and is passed close
-by on the way to the next title. The caption at the bottom names it.
+by on the way to the next title. The caption at the bottom names it and gives the distance from
+Earth, which counts down on a log scale between places (`journey.ts::distanceAt`, units from
+millions of light-years down to km in `formatDistance`) and holds still while a stop is read.
+
+**Stops as compositions.** A content stop is not one slab: its text sits on dark glass cards with
+brass corner marks, and lighter things float around them. Each role and the degree have their
+organization's logo on a small lit "moon" (`.moon`, from the logos in `src/assets/logos`); the
+about facts and the certificates are floating chips; the House of Wisdom diagram floats free;
+project pairs are staggered. Roles show two highlights per group until "Show all highlights"
+(`.more`, toggled in `journey.ts`). Everything leans with the mouse (`--px`, `--py` on `<main>`),
+nearer things more, and the sky leans the same way (`lean` message). Cards lift a little on
+hover. Only decorations bob; text never tilts or moves on its own.
+
+**Space never freezes.** While a stop holds, the camera keeps a slow drift (`sky/journey.ts`, `dz`,
+`dx`, `dy`, `breath`): near stars shift more than far ones and galaxies swell slightly. In the
+homecoming the planets start where they really are and then orbit (Mercury about every 24 s), and
+the marked places ripple. The hero's real sky and the dawn don't drift; they twinkle instead.
 
 **The homecoming** (`sky/journey.ts::drawHomeBack`, `drawHomeFront`). After the last stop come
 three more stops with no text (`journey.ts::HOME_STAGES`), each holding like any stop. The camera
@@ -266,7 +284,8 @@ Read it as: one eased number drives both the text planes and the stars, through 
 length, so text and space move as one. Nothing on the canvas depends on where the text is.
 
 > **Guaranteed:** while a stop holds, its plane has no mask and no transform (crisp text), unless
-> it is too big for the screen and pushed back to fit, and no other plane is visible. Warp streaks
+> it is too big for the screen and pushed back to fit, and no other plane is visible. Cards inside
+> it only shift by a few pixels with the mouse; they never rotate. Warp streaks
 > fade in only above 6 focal lengths of travel a second (the `warp` line), so an unhurried move
 > between stops barely streaks and nothing streaks while a stop holds.
 > **Prohibited:** camera pans, rolls or zooms between sections (the reason this mode exists), and
@@ -281,7 +300,10 @@ length, so text and space move as one. Nothing on the canvas depends on where th
 **Tunables** (`src/scripts/journey.ts` unless noted): `HOLD` (hold width), `STRIDE` (camera travel
 and arrival distance per stop), `PACE` (scroll per stop) and `WEIGHT` (its share per kind of
 stop), `HOME_WEIGHT` (scroll per homecoming stage), `LAG` (camera easing), `CREEP`; the arrive and
-depart paths are in `place`, and a jump's duration is the `ms` line in `flyTo`. The homecoming's
+depart paths are in `place`, a jump's duration is the `ms` line in `flyTo`, and the places'
+distances are `DISTANCE`. The parallax depths are the `--depth` and `calc(var(--px) * …)` values in
+`global.css` (the galaxy journey block). The idle drift's amplitudes are the `dz`, `dx`, `dy` lines
+in `sky/journey.ts::render`. The homecoming's
 zoom is `homeLevel`, `ZOOM` and `ECLIPTIC_TILT` in `sky/journey.ts`; the globe's colors are at the
 top of `sky/earth.ts`. In `src/scripts/sky/journey.ts`:
 `DESTINATIONS` (galaxy, side, tint), the galaxy offsets in `placeGalaxies`, warp is `EXPOSURE`,
@@ -405,6 +427,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
   computed once when the sky starts (`sky/journey.ts`, `sunrise`), so the story always lands at
   dawn whatever the hour. The globe is painted 48 rows a frame from then on, so it never stalls
   the sky.
+- **Two logos contain Arabic script** (IIAB and AAU) and show on the English page too. They are
+  images, so `npm run check` (which checks text) does not flag them; the owner wanted the logos.
+- **The IIAB mark sits in a wide band inside a square image,** so its moon gets `.moon.wide`
+  (larger) by role id in `ProfilePage.astro`. A new logo with lots of padding needs the same.
+- **Hidden highlights are still in the page.** `.extra` bullets are only hidden by CSS in the
+  journey, so search engines, `llms-full.txt` readers and the dome see every one.
 - **The project pairs** (`.project-pair`) exist only for the journey, where each pair is one
   stop; elsewhere they are `display: contents`, so the projects grid is unchanged.
 
@@ -438,6 +466,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Links jump instead of scrolling through** (2026-10-12, owner's report). Smooth-scrolling to
   a far section played every plane's arrive and depart on the way, which flashed them past
   abruptly. A jump is one move with nothing in between (§3b).
+- **Farthest galaxy first** (2026-10-12, owner's request): the first order (Andromeda outward to
+  the Sombrero) read as flying away from home. Distances from McQuinn et al. 2016 for the Sombrero
+  (31 million light-years) and the Whirlpool (28 million).
+- **Simpler, lighter stops** (2026-10-12, owner's request): the dense cards became compositions
+  with logos, two highlights per group up front, and gentle mouse parallax. Text stays still on
+  purpose; only decorations float.
 - **Warp streaks are the one streak allowed, and only in flight.** They appear only on a fast
   scroll, are short (`MAX_STREAK` 60 px) and vanish when the camera slows, so they never sit behind
   text being read. This is the line the long-exposure trails (below) crossed.
