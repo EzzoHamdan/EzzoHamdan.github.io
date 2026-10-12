@@ -94,17 +94,19 @@ nothing deploys from a feature branch.
 
 ## 3. How the sky works
 
-The background is the real, still sky over Amman: stars to magnitude 5, the naked-eye planets
-and the Milky Way, positioned for right now (or 21:00 tonight if it is daytime in Amman) and
-refreshed every minute. Stars twinkle; planets shine steadily, as they do in the real sky.
-**Scrolling never moves anything in the sky.** It only changes the atmosphere color, how bright
-the sky is, and how many shooting stars fall. Clicking empty sky makes a wish: a shooting star
-launches from that point.
+The background is the real sky over Amman as a dome: stars to magnitude 5, the naked-eye
+planets and the Milky Way, positioned for right now (or 21:00 tonight if it is daytime in Amman)
+at the top of the page. Stars twinkle; planets shine steadily, as they do in the real sky.
+**Scrolling turns the dome:** the whole page spans six hours of sky rotation around Polaris
+(90°), eased so it glides. It never leaves trails. Scroll also sets the atmosphere color, how
+bright the sky is, and how many shooting stars fall. Clicking empty sky makes a wish: a shooting
+star launches from that point.
 
 ```text
-night() ──► moment (now, or 21:00 tonight) ──► sidereal time ──► PointSet.project ──► stars, Milky Way
-                                                                                 (still; re-projected each minute)
-scroll position 0..1 ──(Sky.astro)──► worker: eased progress ──► atmosphere color (dusk → midnight → dawn)
+night() ──► moment (now, or 21:00 tonight) ─┐
+                                              ├─► moment + progress × 6 h ──► sidereal time ──► PointSet.project
+scroll position 0..1 ──(Sky.astro)──► worker: eased progress (time constant ≈ 0.22 s)     stars, planets, Milky Way turn together
+                                                             ├─► atmosphere color (dusk → midnight → dawn)
                                                              ├─► sky brightness  (dims behind reading, fades at dawn)
                                                              └─► shooting-star rate (rare at top → many at the end)
 click on empty sky ────(Sky.astro)──► worker: meteors.launch(x, y)
@@ -115,8 +117,9 @@ click on empty sky ────(Sky.astro)──► worker: meteors.launch(x, y)
 ```mermaid
 %%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
 flowchart LR
-  night[night] --> lst[sidereal time] --> project[PointSet.project] --> sky[(stars, Milky Way)]
+  night[night] --> lst[sidereal time] --> project[PointSet.project] --> sky[(stars, planets, Milky Way)]
   scroll([scroll]) --> progress[eased progress]
+  progress -- "× 6 h" --> lst
   progress --> air[atmosphere color]
   progress --> dim[sky brightness]
   click([click on empty sky]) --> wish[meteors.launch]
@@ -125,25 +128,28 @@ flowchart LR
   rate --> meteors[createMeteors]
 ```
 
-Read it as: scroll feeds only color, brightness and the shooting-star rate. No arrow runs from
-scroll to star or planet positions, and that is deliberate (see §7).
+Read it as: scroll moves the sky only through time, so the dome turns the way the real sky does
+around Polaris. Nothing draws trails or streaks from that motion; see §7 for why.
 
-> **Guaranteed:** star positions depend only on the clock, never on scroll.
-> **Reduced motion:** a still sky with no twinkle, no shooting stars and no wishes. The atmosphere
+> **Guaranteed:** the top of the page is the real sky right now; no trails are ever drawn from
+> the rotation.
+> **Prohibited:** long-exposure trails or anything else that accumulates behind text (§7).
+> **Reduced motion:** a still sky (no rotation, twinkle, shooting stars or wishes). The atmosphere
 > color still follows scroll, since it is color, not motion.
-> **Calm** (article pages, `<Base calmSky>`): a fixed midnight color, half brightness, rare
-> shooting stars and no wishes.
+> **Calm** (article pages, `<Base calmSky>`): a still sky in a fixed midnight color, half
+> brightness, rare shooting stars and no wishes.
 
 | Where you are | What the sky does |
 | --- | --- |
-| Top of the page | Dusk: a violet afterglow low on the screen; full brightness; a shooting star every few seconds |
-| Reading sections | Deep midnight, about 30% dimmer behind text |
-| Approaching the end | Pre-dawn violet; shooting stars build, plus a bolide every few seconds past 70% |
-| Bottom (contact) | Rose-amber dawn; stars fade while shooting stars fall over the Amman skyline |
+| Top of the page | Dusk: a violet afterglow low on the screen; the sky as it is now; full brightness; a shooting star every few seconds |
+| Reading sections | Deep midnight, about 30% dimmer behind text; the dome turns as you scroll |
+| Approaching the end | Pre-dawn violet; shooting stars build gently, plus a fireball every 7–12 s past 70% |
+| Bottom (contact) | Rose-amber dawn; the sky six hours on; stars fade while a few long shooting stars fall, ending above the Amman skyline |
 
 **Tunables** (`src/scripts/sky/renderer.ts` unless noted): the atmosphere colors are the
-`ATMOSPHERE` table; brightness is the `dim` line in `render`; the shooting-star rate is the `rate` line (`0.25 + 9 * smooth(0.5, 0.97, p) ** 1.5`);
-the shared direction is `DX`/`DY` in `meteors.ts`.
+`ATMOSPHERE` table; brightness is the `dim` line in `render`; the rotation span is `DOME_SPAN` and its glide is the `4.5` in the progress easing; the
+shooting-star rate is the `rate` line (`0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5`); meteor
+lifetime and speed are in `meteors.ts::spawn`, and the shared direction is `DX`/`DY`.
 
 ## 4. Change recipes
 
@@ -242,11 +248,16 @@ if the spelling differs (it's "Shedar", not "Schedar").
   placed by the middle of their visible path, so they spread evenly across the width. The first
   version spawned only along the top and right edges, which bunched them on the right. A ±6° tilt
   was tried and dropped: the owner wants one unified path.
-- **Shooting-star look:** tapered two-tone trails, glowing heads, flares and lingering trains (the
-  owner preferred this over the original two-ring style).
+- **Shooting-star look:** tapered two-tone trails with a soft glow, glowing heads and flares (the
+  owner preferred this over the original two-ring style). Lingering "trains" were removed because
+  they read as lines without heads, and every meteor ends on screen above the skyline for the
+  same reason. Fewer and longer-lived at the end of the page, per the owner.
 - `[historical]` **Tried and dropped on 2026-10-12, do not re-propose without a new reason:**
-  - Rotating the sky with scroll, with long-exposure star trails (eased, then accumulating).
-    Dropped: any motion of the star field behind text made reading hard and strained the eyes.
+  - Long-exposure star trails while the sky turns (both fading and accumulating). Dropped: the
+    flickering and building streaks strained the eyes and made text hard to read.
+  - Rotating the dome with scroll was dropped along with the trails, then **restored the same
+    day without trails**. The rotation itself was what the owner found mesmerizing; the trails
+    were the problem.
   - Constellation figures that drew themselves in, with names. Dropped: too literal; the brief
     meant "stars", not constellations.
   - Shooting stars radiating from the apex of Earth's motion. Astronomically right, but they
