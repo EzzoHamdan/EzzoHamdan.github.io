@@ -1,0 +1,16 @@
+---
+import { person, site, type Lang } from '../data/profile';
+import { formatDate, ui } from '../lib/i18n';
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const year = site.updated.slice(0, 4);
+---
+
+<footer class="site-footer">
+  <span>© {year} {person.name[lang]}</span>
+  <span>{ui[lang].updated}: <time datetime={site.updated}>{formatDate(site.updated, lang)}</time></span>
+</footer>

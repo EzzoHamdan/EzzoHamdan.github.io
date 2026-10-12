@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://ezzohamdan.github.io/sitemap.xml

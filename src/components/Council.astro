@@ -1,0 +1,40 @@
+---
+// Motion graphic for House of Wisdom: one question fans out to five model families,
+// and each returns its own answer. The answers stay separate; there is no merge step.
+import type { Lang } from '../data/profile';
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const models = ['OpenAI', 'Anthropic', 'Google', 'DeepSeek', 'Ollama'];
+const ys = [34, 82, 130, 178, 226];
+const answerWidths = [92, 70, 104, 80, 62];
+const label = {
+  en: 'One question goes to five model families in parallel, and each returns its own separate answer.',
+  ar: 'سؤال واحد يذهب إلى خمس عائلات من النماذج بالتوازي، وتعيد كل منها إجابتها المنفصلة.',
+}[lang];
+---
+
+<svg class="council" viewBox="0 0 440 260" role="img" aria-label={label} dir="ltr">
+  <defs>
+    <linearGradient id="council-gradient" x1="0" x2="1">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.7"></stop>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0.5"></stop>
+    </linearGradient>
+  </defs>
+  {ys.map((y) => <path class="ray" d={`M44 130 C 120 130, 110 ${y}, 196 ${y} M300 ${y} H 316`} />)}
+  {ys.map((y, i) => <path class="pulse" style={`animation-delay:${i * 0.25}s`} d={`M44 130 C 120 130, 110 ${y}, 196 ${y} H 316`} />)}
+  <circle cx="30" cy="130" r="16" fill="rgba(168,85,247,0.18)" stroke="#a855f7"></circle>
+  <text x="30" y="135" text-anchor="middle" style="font-size:15px;fill:#fff">?</text>
+  {
+    models.map((m, i) => (
+      <g>
+        <rect x="196" y={ys[i] - 13} width="104" height="26" rx="13" fill="rgba(12,12,32,0.9)" stroke="rgba(255,255,255,0.14)" />
+        <text x="248" y={ys[i] + 4.5} text-anchor="middle">{m}</text>
+        <rect x="322" y={ys[i] - 5} width={answerWidths[i]} height="10" rx="5" fill="rgba(34,211,238,0.28)" />
+      </g>
+    ))
+  }
+</svg>

@@ -1,0 +1,68 @@
+<canvas id="sky" aria-hidden="true"></canvas>
+
+<script>
+  import type { SkyMessage } from '../scripts/sky-renderer';
+
+  const canvas = document.getElementById('sky') as HTMLCanvasElement;
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  const size = () => ({ width: innerWidth, height: innerHeight, dpr: Math.min(devicePixelRatio || 1, 2) });
+
+  async function connect(): Promise<(msg: SkyMessage, transfer?: Transferable[]) => void> {
+    if ('transferControlToOffscreen' in canvas) {
+      const worker = new Worker(new URL('../scripts/sky.worker.ts', import.meta.url), { type: 'module' });
+      const offscreen = canvas.transferControlToOffscreen();
+      worker.postMessage({ type: 'init', canvas: offscreen, ...size(), reducedMotion: motion.matches }, [offscreen]);
+      return (msg) => worker.postMessage(msg);
+    }
+    const { createSky } = await import('../scripts/sky-renderer');
+    const sky = createSky(canvas);
+    sky.handle({ type: 'init', ...size(), reducedMotion: motion.matches });
+    return (msg) => sky.handle(msg);
+  }
+
+  async function start() {
+    const post = await connect();
+
+    let last = size();
+    let resizeTimer: ReturnType<typeof setTimeout>;
+    addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const next = size();
+        // Mobile browsers resize on every address-bar show/hide; only reseed on real changes
+        if (next.width === last.width && next.dpr === last.dpr && Math.abs(next.height - last.height) < 120) return;
+        last = next;
+        post({ type: 'resize', ...next });
+      }, 150);
+    });
+
+    let ticking = false;
+    addEventListener(
+      'scroll',
+      () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          post({ type: 'scroll', y: scrollY });
+          ticking = false;
+        });
+      },
+      { passive: true },
+    );
+
+    document.addEventListener('visibilitychange', () => post({ type: 'visible', visible: !document.hidden }));
+    motion.addEventListener('change', () => post({ type: 'motion', reduced: motion.matches }));
+
+    // Opening moment: one bright shooting star crosses the name
+    const name = document.querySelector('.hero-name');
+    if (name) {
+      await document.fonts.ready;
+      const r = name.getBoundingClientRect();
+      post({ type: 'intro', x: r.left + r.width * 0.55, y: r.top - 12 });
+    }
+  }
+
+  // Wait until the page has painted so the sky never competes with the content
+  if ('requestIdleCallback' in window) requestIdleCallback(() => void start(), { timeout: 1200 });
+  else setTimeout(() => void start(), 200);
+</script>

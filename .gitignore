@@ -1,7 +1,9 @@
 # Dependencies
 node_modules/
-package-lock.json
-yarn.lock
+
+# Build output and Astro cache
+dist/
+.astro/
 
 # OS
 .DS_Store
@@ -14,8 +16,5 @@ Thumbs.db
 *.swo
 *~
 
-# Build outputs
-dist/
-build/
-
-# Sample blog files 
+# Local tool output
+.playwright-mcp/

@@ -1,0 +1,76 @@
+---
+import Icon from './Icon.astro';
+import type { Lang } from '../data/profile';
+import { ui } from '../lib/i18n';
+
+interface Props {
+  lang: Lang;
+  /** Href of the same page in the other language, if one exists. */
+  otherLangHref?: string;
+  /** In-page section links; omitted on article pages. */
+  sections?: boolean;
+}
+
+const { lang, otherLangHref, sections = true } = Astro.props;
+const s = ui[lang];
+const other = lang === 'en' ? 'ar' : 'en';
+const home = ui[lang].path;
+const links = [
+  ['hero', s.nav.home],
+  ['experience', s.nav.experience],
+  ['projects', s.nav.projects],
+  ['education', s.nav.education],
+  ['contact', s.nav.contact],
+] as const;
+---
+
+<header class="site-header">
+  <nav class="site-nav" aria-label={s.navLabel}>
+    {
+      sections
+        ? links.map(([id, label]) => (
+            <a href={`#${id}`} class="nav-link" data-section={id}>
+              {label}
+            </a>
+          ))
+        : <a href={home} class="nav-link">{s.nav.home}</a>
+    }
+    {
+      otherLangHref && (
+        <a href={otherLangHref} class="lang-link" hreflang={other} title={s.otherLang.title}>
+          <Icon name="globe" />
+          {s.otherLang.label}
+        </a>
+      )
+    }
+  </nav>
+</header>
+
+{
+  sections && (
+    <script>
+      // Mark the nav link of the section currently in view
+      const links = new Map(
+        [...document.querySelectorAll<HTMLAnchorElement>('.nav-link[data-section]')].map((a) => [a.dataset.section, a]),
+      );
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const link = links.get(entry.target.id);
+            if (entry.isIntersecting) {
+              links.forEach((a) => a.removeAttribute('aria-current'));
+              link?.setAttribute('aria-current', 'location');
+            } else {
+              link?.removeAttribute('aria-current');
+            }
+          }
+        },
+        { rootMargin: '-45% 0px -50% 0px' },
+      );
+      links.forEach((_, id) => {
+        const section = id && document.getElementById(id);
+        if (section) observer.observe(section);
+      });
+    </script>
+  )
+}

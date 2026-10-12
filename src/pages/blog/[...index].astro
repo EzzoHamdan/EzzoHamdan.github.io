@@ -1,0 +1,44 @@
+---
+// The blog index only exists once at least one post is published.
+import Base from '../../layouts/Base.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import { person, site } from '../../data/profile';
+import { formatDate } from '../../lib/i18n';
+import { publishedPosts } from '../../lib/blog';
+
+export async function getStaticPaths() {
+  const posts = await publishedPosts();
+  return posts.length ? [{ params: { index: undefined }, props: { posts } }] : [];
+}
+
+const { posts } = Astro.props;
+---
+
+<Base
+  lang="en"
+  title={`Articles — ${person.name.en}`}
+  description={`Articles by ${person.name.en} on AI engineering, RAG and machine learning in production.`}
+  canonical={`${site.url}/blog/`}
+>
+  <Header lang="en" sections={false} />
+  <main id="main" class="article container">
+    <h1>Articles</h1>
+    <ul class="post-list">
+      {
+        posts.map((p) => (
+          <li class="card">
+            <a href={`/blog/${p.id}/`}>
+              <time class="mono" datetime={p.data.date.toISOString().slice(0, 10)}>
+                {formatDate(p.data.date.toISOString().slice(0, 10), 'en')}
+              </time>
+              <h2>{p.data.title}</h2>
+              <p>{p.data.description}</p>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </main>
+  <Footer lang="en" />
+</Base>

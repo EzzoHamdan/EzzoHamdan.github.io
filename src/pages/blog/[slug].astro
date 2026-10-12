@@ -1,0 +1,46 @@
+---
+import { render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import { person, site } from '../../data/profile';
+import { formatDate } from '../../lib/i18n';
+import { publishedPosts } from '../../lib/blog';
+import { articleGraph } from '../../lib/schema';
+
+export async function getStaticPaths() {
+  const posts = await publishedPosts();
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const url = `${site.url}/blog/${post.id}/`;
+const { title, description, date, updated, tags, draft } = post.data;
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+---
+
+<Base
+  lang="en"
+  title={`${title} — ${person.name.en}`}
+  description={description}
+  canonical={url}
+  ogType="article"
+  noindex={draft}
+  jsonLd={articleGraph({ url, title, description, date, updated, tags })}
+>
+  <Header lang="en" sections={false} />
+  <main id="main">
+    <article class="article container">
+      <a class="article-back" href="/blog/">← All articles</a>
+      <ul class="tags">{tags.map((t) => <li class="tag">{t}</li>)}</ul>
+      <h1>{title}</h1>
+      <p class="article-meta">
+        By <a href="/">{person.name.en}</a>, <time datetime={iso(date)}>{formatDate(iso(date), 'en')}</time>
+        {updated && <> (updated <time datetime={iso(updated)}>{formatDate(iso(updated), 'en')}</time>)</>}
+      </p>
+      <div class="prose"><Content /></div>
+    </article>
+  </main>
+  <Footer lang="en" />
+</Base>
