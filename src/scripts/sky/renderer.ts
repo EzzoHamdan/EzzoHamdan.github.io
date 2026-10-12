@@ -161,7 +161,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
     const shower = moment.shower >= 0 ? 1.5 : 1;
     // Rare at the top, building toward the end of the page, over Amman
-    const rate = calm ? 0.08 * area : (0.25 + 6.5 * smooth(0.5, 0.97, p) ** 1.5) * area * shower;
+    const rate = calm ? 0.08 * area : (0.25 + 9 * smooth(0.5, 0.97, p) ** 1.5) * area * shower;
     spawnDebt += dt * rate;
     while (spawnDebt >= 1) {
       meteors.spawn(w, h);
