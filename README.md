@@ -2,8 +2,8 @@
 
 > **What this is:** the source of Ezzaldeen Hamdan's personal site, served at
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
-> **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 change recipes →
-> §4 failure messages → §5 sharp edges → §6 decisions.
+> **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 how the sky works →
+> §4 change recipes → §5 failure messages → §6 sharp edges → §7 decisions.
 > **Reflects code as of 2026-10-12** (`sky-over-amman` branch: the "sky over Amman" design).
 
 **What must not break:**
@@ -26,9 +26,9 @@
 
 **Limits:**
 
-- **JavaScript:** about 4 KB gzipped on first load. The sky worker, including the 1,627-star
-  catalog, is about 20 KB gzipped and loads after the page has painted. Everything else is HTML
-  and CSS.
+- **JavaScript:** about 4.5 KB gzipped on first load. The sky worker, including the 1,627-star
+  catalog and 89 constellation figures, is about 25 KB gzipped and loads after the page has
+  painted. Everything else is HTML and CSS.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
 - **Hosting:** GitHub Pages serves static files only; there is no server code anywhere.
 
@@ -78,9 +78,13 @@ nothing deploys from a feature branch.
 | `llms.txt` / `llms-full.txt` text | [`src/lib/llms.ts`](src/lib/llms.ts) |
 | Profile page (used by both languages) | [`src/components/ProfilePage.astro`](src/components/ProfilePage.astro) |
 | `<head>`: meta, Open Graph, hreflang, fonts | [`src/layouts/Base.astro`](src/layouts/Base.astro) |
-| Sky renderer: stars, constellations, shooting stars (worker + fallback) | [`src/scripts/sky-renderer.ts`](src/scripts/sky-renderer.ts), [`src/components/Sky.astro`](src/components/Sky.astro) |
-| Amman location, sidereal time, "tonight" logic, shower dates | [`src/scripts/sky-time.ts`](src/scripts/sky-time.ts) |
-| Arabic star names and meteor showers | [`src/data/star-names.ts`](src/data/star-names.ts) |
+| Sky: page side (scroll, labels, clock, star names) | [`src/components/Sky.astro`](src/components/Sky.astro) |
+| Sky: layers, scroll easing, trails, twilight, draw-in | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
+| Sky: Amman, sidereal time, Sun, apex, galactic plane, the night's start and dawn | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
+| Sky: catalog arrays and the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
+| Sky: shooting stars and trains | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
+| Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
+| Star, constellation and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
 | Amman skyline at the footer dawn | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
@@ -88,7 +92,72 @@ nothing deploys from a feature branch.
 | Post-build checks | [`scripts/check-dist.mjs`](scripts/check-dist.mjs) |
 | CI and deploy | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
 
-## 3. Change recipes
+## 3. How the sky works
+
+The page is one night over Amman. The top of the page is the sky right now (or tonight at 21:00
+if it is daytime in Amman), and the bottom is the next dawn. Scrolling moves through that night.
+
+```text
+scroll position 0..1 ──(Sky.astro)──► worker: eased progress (time constant ≈ 0.22 s)
+                                         │
+                       moment = start + progress × (dawn − start)     astro.ts::night
+                                         │
+              ┌──────────────────────────┼───────────────────────────────┐
+     sidereal time → project            Sun altitude                apex (or shower radiant)
+     stars, figures, Milky Way          → star limit, Milky Way      → direction of shooting
+     (catalog.ts::PointSet)               fade, dawn glow              stars (meteors.ts)
+              │                          │                               │
+              └──────────► one canvas: glow · Milky Way · figures · stars (trail buffer) · meteors
+                                         │
+          worker → page messages: `labels` (constellation names), `time` (clock), `hover` (star name)
+```
+
+#### 3. (rendered)
+
+```mermaid
+%%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
+flowchart LR
+  scroll([scroll]) --> progress[eased progress]
+  progress --> moment[moment between start and dawn]
+  moment --> lst[sidereal time] --> project[PointSet.project]
+  moment --> sunalt[sunAltitude] --> twilight[star limit, Milky Way fade, dawn glow]
+  moment --> apexnode[apex] --> meteors[createMeteors]
+  project --> canvas[(canvas layers)]
+  twilight --> canvas
+  meteors --> canvas
+  canvas -. "labels, time, hover" .-> page([Sky.astro DOM text])
+```
+
+Read it as: everything on the canvas is a function of one number, the moment on screen. No
+text is ever drawn on the canvas; labels, the clock and star names are DOM text in `Sky.astro`,
+so they use the page's fonts and language.
+
+> **Guaranteed:** the top of the page is the current sky (or tonight at 21:00); the bottom is the
+> moment the Sun reaches 4° below the horizon (`astro.ts::night`, `DAWN = -4`).
+> **Reduced motion:** a still sky at the top-of-page moment, with constellations and labels shown
+> at once, and no rotation, draw-in, twinkle, trails or shooting stars.
+> **Calm** (article pages, `<Base calmSky>`): a dim, still sky with rare shooting stars, and no
+> labels or clock.
+
+| Where you are | What the sky does |
+| --- | --- |
+| Top of the page | The constellation figures draw in, rippling out from overhead, and named ones fade in. Shooting stars are rare. |
+| Reading sections | The figures fade and the sky dims about 30% behind text. Scrolling turns the sky and leaves long-exposure arcs around Polaris. |
+| Approaching the end | Shooting stars build into a shower, plus fireballs past 70%. |
+| Bottom (contact) | Dawn: faint stars are gone, the glow rises in the east, and shooting stars fall over the Amman skyline. |
+
+**Tunables** (all in `src/scripts/sky/renderer.ts` unless noted):
+
+| What | Where |
+| --- | --- |
+| Night span | `astro.ts::night` (21:00 start in daylight; `DAWN` altitude) |
+| Scroll easing | `render`, `1 - Math.exp(-dt * 4.5)` |
+| Trail length | `render`, `keepTarget` (cap 0.965) and the fade speed of `trailKeep` |
+| Shooting-star rate | `render`, the `rate` line (`0.08 + 11 * smooth(0.5, 0.97, p) ** 1.5`) |
+| Draw-in timing | `planDrawIn` (0.3 s + 1.9 s × distance from center) |
+| Label fade-out | `labels`, `smooth(0.05, 0.17, p)` |
+
+## 4. Change recipes
 
 **Update a fact (role, date, project, number):**
 
@@ -108,16 +177,21 @@ full-width card.
 3. Flip it to `draft: false` to publish. `/blog/` and the sitemap entry appear automatically with
    the first published post.
 
-**Change the sky:** edit `src/scripts/sky-renderer.ts`. Check reduced motion (macOS: System
-Settings → Accessibility → Display → Reduce motion): the sky must turn still, with no shooting
-stars and no twinkle.
+**Change the sky:** see the tunables in §3. Then check, in this order:
+1. Reduced motion (macOS: System Settings → Accessibility → Display → Reduce motion): a still
+   sky, with constellation labels shown.
+2. An article page in `npm run dev`: a calm sky.
+3. A fast scroll from top to bottom: continuous arcs, not dotted ones, and a shower at dawn.
 
-**Add a named star:** add `{ en, origin, ar }` to `starNames` in `src/data/star-names.ts`, where
+**Add a constellation label:** add the IAU abbreviation (as in `src/data/sky.json`) with `en` and
+`ar` names to `constellationNames` in `src/data/sky-names.ts`. No regeneration needed.
+
+**Add a named star:** add `{ en, origin, ar }` to `starNames` in `src/data/sky-names.ts`, where
 `en` is the catalog's proper name. Regenerate the catalog with the commands at the top of
 `scripts/make-sky-catalog.mjs`. The script exits with `named star not found in catalog: <name>`
 if the spelling differs (it's "Shedar", not "Schedar").
 
-## 4. Failure messages from `npm run check`
+## 5. Failure messages from `npm run check`
 
 | Message | Meaning | Fix |
 | --- | --- | --- |
@@ -129,7 +203,7 @@ if the spelling differs (it's "Shedar", not "Schedar").
 | `draft "x.md" was built into dist/blog` | The draft filter in `src/lib/blog.ts` broke | Restore `import.meta.env.DEV \|\| !data.draft` |
 | `expected exactly one <h1>` | A page has zero or several `<h1>` | One per page; sections use `<h2>` |
 
-## 5. Sharp edges
+## 6. Sharp edges
 
 - ⚠ **Scroll-driven CSS is written in longhand on purpose** (`global.css`, "Scroll-driven
   motion"). The CSS minifier folds `animation-timeline` into the `animation` shorthand, browsers
@@ -141,18 +215,22 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Everything is crawlable** (`src/pages/robots.txt.ts`), AI crawlers included. That's
   deliberate for a personal site.
 - **The sky runs in a Web Worker** via `OffscreenCanvas`. Browsers without it fall back to the same
-  renderer on the main thread, which is why `sky-renderer.ts` is imported in two places.
+  renderer on the main thread, which is why `sky/renderer.ts` is imported in two places.
+- ⚠ **Trails are strokes from each star's previous position** (`renderer.ts::drawStars`). Anything
+  that teleports the sky (resize, returning to the tab, a settings change) must call
+  `reproject(false)` or set `lst = NaN`. Otherwise every star draws a line across the screen.
+- **Labels must be re-sent even when nothing moves** (`labelsDirty`). A still sky (reduced
+  motion) never "moves", and once shipped with no labels at all because of it.
 - ⚠ **`src/data/sky.json` is generated.** Hand edits are lost the next time
   `scripts/make-sky-catalog.mjs` runs. It is BSD-3-Clause data (see Credits).
-- **Jordan has no daylight saving time** (UTC+3 all year since 2022), so `sky-time.ts` uses a
-  fixed offset. If that ever changes, the "right now" caption and the 22:00 "tonight" sky
-  drift by an hour.
+- **Jordan has no daylight saving time** (UTC+3 all year since 2022), so `sky/astro.ts` uses a
+  fixed offset. If that ever changes, the clock and the 21:00 "tonight" start drift by an hour.
 - **Unlike what you'd expect, east is on the left** of the sky. The projection shows the sky as you
   see it lying on your back with north at the top, the way an astrolabe plate does.
 - **Star labels only appear over empty sky** (`Sky.astro`, the `content` selector), so hovering
   text never pops a label in the middle of reading.
 
-## 6. Decisions
+## 7. Decisions
 
 - **Astro, not hand-written HTML.** GitHub Pages only *serves* static files; it doesn't care how
   they were made. The built `dist/` is plain HTML, CSS and a little JS. Astro gives one data file
@@ -174,6 +252,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
   20:19: Polaris at 32.1° altitude (equal to Amman's latitude) and Vega at 58° in the WNW.
 - **No AI-generated video or imagery.** The sky is procedural and the skyline is generated at
   build time; both are lighter than a video and specific to Amman.
+- **Shooting stars radiate from the apex of Earth's motion,** not a fixed screen direction. The old
+  version spawned along the top and right edges and flew down-left, which bunched them on the
+  right. The apex also climbs toward dawn (−29° at 20:30, +80° at 06:23 on 2026-10-12), so
+  "rare at first, a shower at dawn" is both the story and the astronomy.
+- **The page is one night,** from the visitor's now to Amman's real dawn. It is not a fixed span
+  of hours, so the rotation is larger on long winter nights.
 
 ## Credits
 
