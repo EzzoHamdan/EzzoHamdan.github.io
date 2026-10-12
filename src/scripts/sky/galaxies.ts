@@ -16,6 +16,25 @@ export const SPRITE = 1024;
 const K = SPRITE / 640;
 const MID = 320;
 
+// The Milky Way's shape, shared by its portrait and by SUN_IN_MILKY_WAY
+const MW = { angle: -0.35, tilt: 0.68, pitch: 0.2, wind: 2.4 * Math.PI, minor: 0.85 };
+/** How far along the Orion Arm (a minor arm) the Sun sits: about half the radius out. */
+const SUN_ALONG = 0.62;
+
+/** A galaxy's radius in its sprite, in pixels. */
+export const GALAXY_RADIUS = 256 * K;
+
+/** Where the Sun is in the Milky Way's sprite, in pixels. */
+export const SUN_IN_MILKY_WAY = (() => {
+  const theta = SUN_ALONG * MW.wind;
+  const r = 256 * MW.minor * Math.exp(MW.pitch * (theta - MW.wind));
+  const x = r * Math.cos(theta + Math.PI / 2);
+  const y = r * Math.sin(theta + Math.PI / 2);
+  const c = Math.cos(MW.angle);
+  const s = Math.sin(MW.angle);
+  return { x: SPRITE / 2 + (x * c - y * MW.tilt * s) * K, y: SPRITE / 2 + (x * s + y * MW.tilt * c) * K };
+})();
+
 const YOUNG = '170,196,255';
 const BLUE_WHITE = '214,224,255';
 const OLD = '255,222,176';
@@ -196,15 +215,16 @@ export function paintGalaxy(kind: GalaxyKind, makeCanvas: (w: number, h: number)
   } else {
     // The Milky Way from outside: a barred spiral, two major arms from the ends of the bar and two
     // fainter ones between them
-    angle = -0.35;
-    plane(0.68);
+    angle = MW.angle;
+    plane(MW.tilt);
     disk(2200, R * 0.34, R * 1.05, (x, y) => glow(x, y, between(8, 20), BLUE_WHITE, 0.026));
     for (let i = 0; i < 600; i++) glow(gauss() * R * 0.16, gauss() * R * 0.05, between(8, 18), OLD, 0.07);
-    arms(3000, 2, R, 0.2, 2.4 * Math.PI, 0.08, 0, (x, y) => armLight(x, y, YOUNG));
-    arms(1300, 2, R * 0.85, 0.2, 2.4 * Math.PI, 0.1, Math.PI / 2, (x, y) => armLight(x, y, YOUNG, 0.6));
-    arms(70, 2, R, 0.2, 2.4 * Math.PI, 0.07, 0, (x, y) => glow(x, y, between(2, 4.5), PINK, 0.35));
+    arms(3000, 2, R, MW.pitch, MW.wind, 0.08, 0, (x, y) => armLight(x, y, YOUNG));
+    // The minor arms, the Orion Arm among them, where the Sun is
+    arms(1300, 2, R * MW.minor, MW.pitch, MW.wind, 0.1, Math.PI / 2, (x, y) => armLight(x, y, YOUNG, 0.6));
+    arms(70, 2, R, MW.pitch, MW.wind, 0.07, 0, (x, y) => glow(x, y, between(2, 4.5), PINK, 0.35));
     dust();
-    arms(1000, 2, R * 0.97, 0.2, 2.4 * Math.PI, 0.04, -0.16, (x, y) => glow(x, y, between(4, 9), WHITE, 0.15));
+    arms(1000, 2, R * 0.97, MW.pitch, MW.wind, 0.04, -0.16, (x, y) => glow(x, y, between(4, 9), WHITE, 0.15));
     light();
     bulge(R * 0.3, OLD, 0.65);
     bulge(R * 0.08, WHITE, 0.95);

@@ -57,6 +57,12 @@ const WEIGHT: Record<Kind, number> = { hero: 1.4, title: 0.65, panel: 1 };
 const LAG = 0.14;
 /** A little camera movement during a hold, so the stars answer every scroll. */
 const CREEP = 0.08;
+/**
+ * After the last stop, the homecoming: three more stops with no text, each a stage of a dive
+ * home (sky/journey.ts::drawHome), then the landing at dawn over Amman.
+ */
+const HOME_STAGES = ['milkyway', 'sun', 'earth'] as const;
+const HOME_WEIGHT = 0.8;
 
 const CAPTIONS = {
   en: {
@@ -64,14 +70,20 @@ const CAPTIONS = {
     experience: 'Toward the Triangulum galaxy, 2.7 million light-years away',
     projects: 'Toward the Whirlpool galaxy, about 30 million light-years away',
     education: 'Toward the Sombrero galaxy, about 30 million light-years away',
-    home: 'Home: the Milky Way, and dawn over Amman',
+    milkyway: 'Home: the Milky Way, our galaxy',
+    sun: 'The Solar System, in the Orion Arm of the Milky Way',
+    earth: 'Earth, as dawn reaches Amman',
+    dawn: 'Dawn over Amman',
   },
   ar: {
     about: 'نحو المرأة المسلسلة، «اللطخة السحابية» عند الصوفي، على بعد 2.5 مليون سنة ضوئية',
     experience: 'نحو مجرة المثلث، على بعد 2.7 مليون سنة ضوئية',
     projects: 'نحو مجرة الدوامة، على بعد نحو 30 مليون سنة ضوئية',
     education: 'نحو مجرة القبعة المكسيكية، على بعد نحو 30 مليون سنة ضوئية',
-    home: 'العودة إلى درب التبانة، وفجر عمّان',
+    milkyway: 'العودة إلى درب التبانة، مجرّتنا',
+    sun: 'المجموعة الشمسية، في ذراع الجبّار من درب التبانة',
+    earth: 'الأرض، والفجر يبلغ عمّان',
+    dawn: 'فجر عمّان',
   },
 };
 
@@ -140,6 +152,8 @@ export function startJourney() {
   const lastStop = stops.length - 1;
 
   let vw = 0, vh = 0, F = 1000, cy = 0, contactTop = 0, horizonFromContact = NaN;
+  /** Scroll positions of the homecoming's stages, after the last stop. */
+  let homeY: number[] = [];
   let sink: ((msg: JourneyMessage) => void) | null = null;
 
   function layout() {
@@ -158,9 +172,14 @@ export function startJourney() {
       s.last = '';
     });
 
+    // The homecoming's stages follow the last stop like stops of their own
+    homeY = [];
+    let at = stops[lastStop].y + (PACE * vh * (stops[lastStop].weight + HOME_WEIGHT)) / 2;
+    for (let k = 0; k < HOME_STAGES.length; k++, at += PACE * vh * HOME_WEIGHT) homeY.push(Math.round(at));
+
     // The sections become the scroll track. Their boundaries sit halfway between stops, shifted
     // half a screen so the header highlights the section of the stop being read
-    contactTop = stops[lastStop].y + PACE * vh * 0.55 + vh;
+    contactTop = homeY[homeY.length - 1] + PACE * vh * 0.45 + vh;
     const track = sections.filter((sec) => stops.some((s) => s.section === sec.id));
     let top = 0;
     track.forEach((sec, k) => {
@@ -196,14 +215,25 @@ export function startJourney() {
     onScroll();
   }
 
-  /** Position along the route, in stops, for a scroll position. */
+  /** Position along the route, in stops (the homecoming's stages included), for a scroll position. */
   function routeAt(y: number) {
     if (y <= 0) return 0;
-    for (let i = 0; i < lastStop; i++) {
-      if (y < stops[i + 1].y) return i + (y - stops[i].y) / (stops[i + 1].y - stops[i].y);
+    const ys = [...stops.map((s) => s.y), ...homeY];
+    for (let i = 0; i < ys.length - 1; i++) {
+      if (y < ys[i + 1]) return i + (y - ys[i]) / (ys[i + 1] - ys[i]);
     }
-    // After the last stop the camera flies on one more leg, home, and comes to rest
-    return lastStop + Math.min(1, (y - stops[lastStop].y) / (PACE * vh));
+    // At the Earth the route ends; the landing (the contact section scrolling in) takes over
+    return ys.length - 1;
+  }
+
+  /**
+   * How far the camera has flown for a position along the route. It slows to a creep for the
+   * homecoming, whose motion is the zoom home rather than the flight.
+   */
+  function cameraZ(u: number) {
+    const st = stairs(u);
+    const flight = Math.min(st, lastStop + 1);
+    return STRIDE * F * (flight + 0.15 * Math.max(0, st - lastStop - 1));
   }
 
   function place(s: Stop, a: number, b: number, warp: number) {
@@ -306,7 +336,9 @@ export function startJourney() {
   // The caption names where the camera is heading
   function caption(u: number) {
     const near = stops[Math.min(lastStop, Math.round(u))];
-    const key = u > lastStop + 0.5 ? 'home' : near.kind === 'hero' ? '' : near.section;
+    const stage = Math.round(u) - lastStop - 1;
+    const key =
+      landing() > 0.35 ? 'dawn' : stage >= 0 ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)] : near.kind === 'hero' ? '' : near.section;
     if (key !== captionKey && viewCaption) {
       captionKey = key;
       const text = (CAPTIONS[lang] as Record<string, string>)[key] ?? '';
@@ -331,6 +363,7 @@ export function startJourney() {
       z,
       speed,
       u: eased,
+      home: stairs(eased) - lastStop,
       end: landing(),
       horizonY: Number.isFinite(horizonFromContact) ? top + horizonFromContact : NaN,
     });
@@ -363,7 +396,7 @@ export function startJourney() {
     eased += (target - eased) * (1 - Math.exp(-dt / LAG));
     if (Math.abs(target - eased) < 0.0004) eased = target;
     rate += (Math.abs(eased - before) / dt - rate) * (1 - Math.exp(-dt / 0.12));
-    const z = STRIDE * F * stairs(eased);
+    const z = cameraZ(eased);
     const speed = (z - lastZ) / dt;
     lastZ = z;
     render(eased, rate);
@@ -382,7 +415,7 @@ export function startJourney() {
     if (running) return;
     running = true;
     lastTime = performance.now();
-    lastZ = STRIDE * F * stairs(eased);
+    lastZ = cameraZ(eased);
     requestAnimationFrame(frame);
   }
 
@@ -403,8 +436,8 @@ export function startJourney() {
     flight = {
       y0: scrollY,
       y1: y,
-      z0: STRIDE * F * stairs(eased),
-      z1: STRIDE * F * stairs(u1),
+      z0: cameraZ(eased),
+      z1: cameraZ(u1),
       from: Math.round(eased),
       to: Number.isInteger(u1) ? u1 : -1,
       start: performance.now(),
@@ -446,7 +479,7 @@ export function startJourney() {
     eased = target = routeAt(scrollY);
   }
   render(eased, 0);
-  lastZ = STRIDE * F * stairs(eased);
+  lastZ = cameraZ(eased);
   addEventListener('pagehide', () => sessionStorage.setItem(`journey:${location.pathname}`, String(scrollY)));
   addEventListener('scroll', onScroll, { passive: true });
 
@@ -487,7 +520,7 @@ export function startJourney() {
     attach(post: (msg: JourneyMessage) => void) {
       sink = post;
       layout();
-      send(STRIDE * F * stairs(eased), 0);
+      send(cameraZ(eased), 0);
     },
   };
 }

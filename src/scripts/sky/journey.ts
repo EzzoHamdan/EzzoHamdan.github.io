@@ -14,17 +14,21 @@
  *   around it.
  * - Warp: stars stretch into short streaks only while the camera is actually moving fast, which
  *   happens between stops, never while a stop holds still for reading.
- * - Landing: at the end the Milky Way, home, then dawn over Amman with shooting stars, some falling
- *   behind the skyline.
+ * - Homecoming (`drawHome`): after the last stop, a powers-of-ten dive home, one stage per leg of
+ *   scroll: the Milky Way, centered on where the Sun is in it; the Solar System, planets where they
+ *   really are; Earth, turned to Amman at the moment of the next sunrise there, so Amman sits on
+ *   the line between night and day. Then dawn over Amman with shooting stars, some falling behind
+ *   the skyline.
  *
  * The camera's position comes from the page every frame (`camera`), already eased, so the stars and
  * the text planes the page moves with CSS share one camera and one focal length.
  */
-import { night, siderealTime } from './astro';
+import { nextSunrise, night, siderealTime, solarSystem } from './astro';
 import { camera as skyCamera, starColor, starMag, stars } from './catalog';
+import { createGlobe } from './earth';
 import { createMeteors } from './meteors';
 import { drawMilkyWay } from './milky-way';
-import { paintGalaxy, type GalaxyKind } from './galaxies';
+import { GALAXY_RADIUS, paintGalaxy, SPRITE, SUN_IN_MILKY_WAY, type GalaxyKind } from './galaxies';
 
 export type JourneyMessage =
   | {
@@ -44,9 +48,11 @@ export type JourneyMessage =
   | { type: 'route'; focal: number; stride: number; cy: number; legs: { id: string; first: number; last: number }[] }
   /**
    * The camera now: distance travelled, its speed (per second), the position along the route in
-   * stops, how far the final landing has come (0..1), and where the skyline's far hills are.
+   * stops, the homecoming's progress in stages (0 at the last stop, 1 the Milky Way, 2 the Sun,
+   * 3 the Earth; negative before), how far the final landing has come (0..1), and where the
+   * skyline's far hills are.
    */
-  | { type: 'camera'; z: number; speed: number; u: number; end: number; horizonY: number }
+  | { type: 'camera'; z: number; speed: number; u: number; home: number; end: number; horizonY: number }
   | { type: 'motion'; reduced: boolean }
   | { type: 'visible'; visible: boolean }
   | { type: 'wish'; x: number; y: number };
@@ -72,7 +78,18 @@ const DESTINATIONS: Record<string, { kind: GalaxyKind; side: number; tint: numbe
   projects: { kind: 'whirlpool', side: 1, tint: [160, 64, 136] },
   education: { kind: 'sombrero', side: -1, tint: [168, 124, 64] },
 };
-const HOME = { kind: 'milkyway' as GalaxyKind, tint: [150, 118, 96] };
+/** How much each stage of the homecoming zooms in on the next. */
+const ZOOM = 14;
+/** The Solar System seen from a little above the plane of the planets. */
+const ECLIPTIC_TILT = 0.42;
+const ORBITER_LOOK: Record<string, { color: string; r: number }> = {
+  mercury: { color: '#c9c2b8', r: 1.8 },
+  venus: { color: '#f3e2b8', r: 2.6 },
+  earth: { color: '#7fb0ff', r: 2.8 },
+  mars: { color: '#e0805a', r: 2.2 },
+  jupiter: { color: '#e8cfa6', r: 4.4 },
+  saturn: { color: '#e9d39a', r: 3.8 },
+};
 
 // Sky colors, [top, bottom]: the night over Amman, open space, the hour before dawn, dawn
 const NIGHT = [[9, 13, 32], [30, 30, 72]];
@@ -138,7 +155,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
 
   let w = 0, h = 0, dpr = 1;
   let F = 1000, stride = 4000, cx = 0, cy = 0;
-  let z = 0, speed = 0, u = 0, end = 0, horizonY = NaN;
+  let z = 0, speed = 0, u = 0, home = -9, end = 0, horizonY = NaN, lastStop = 99;
   let reduced = false, visible = true, started = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(8, 14);
   let drawnKey = '';
@@ -215,20 +232,145 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
         sprite: kept.get(d.kind),
       });
     }
-    // Home: the Milky Way, ahead after the last stop, where the flight comes to rest
-    const lastStop = Math.max(0, ...legs.map((l) => l.last));
-    const at = 2.6 * F;
-    galaxies.push({
-      kind: HOME.kind,
-      x: 0.1 * w * 2.6,
-      y: -0.06 * h * 2.6,
-      z: stride * (lastStop + 1) + at,
-      size: 1.1 * h * 2.6,
-      tint: HOME.tint,
-      first: lastStop + 1,
-      last: lastStop + 1,
-      sprite: kept.get(HOME.kind),
+  }
+
+  // The homecoming, prepared once: the Milky Way's portrait, the planets and the globe, all for
+  // the moment of the next sunrise in Amman
+  const sunrise = nextSunrise(Date.now());
+  const globe = createGlobe(1024, sunrise, makeCanvas);
+  const sunSprite = softSprite(64, '255,236,196', 0.12);
+  let milkyWay: Canvas | undefined;
+  const orbiters = (() => {
+    const all = solarSystem(sunrise);
+    const earth = all.find((p) => p.key === 'earth')!;
+    // Turn the system so the Sun lies the same way from Earth as the daylight on the globe
+    const toSun = Math.atan2(-earth.y, -earth.x);
+    const want = Math.atan2(Math.sin(globe.sunAngle) / ECLIPTIC_TILT, Math.cos(globe.sunAngle));
+    const turn = want - toSun;
+    // Orbits drawn on a square-root scale, so the inner planets aren't crowded into the Sun
+    return all.map((p) => {
+      const angle = Math.atan2(p.y, p.x) + turn;
+      const r = Math.sqrt(p.a);
+      return { key: p.key, r, x: r * Math.cos(angle), y: r * Math.sin(angle) * ECLIPTIC_TILT };
     });
+  })();
+  const earthAt = orbiters.find((p) => p.key === 'earth')!;
+
+  /** The homecoming's zoom level: about -1.3 at the last stop, then one stage per leg of scroll. */
+  const homeLevel = (home: number) => (home < 1 ? -1.3 + 1.3 * home : home - 1) + 0.45 * smooth(0, 0.6, end);
+
+  /** The Milky Way, behind the stars: centered on the Sun's place in it, with a mark there. */
+  function drawHomeBack(L: number, fade: number) {
+    const a = smooth(-1.8, -1, L) * (1 - smooth(0.15, 0.6, L)) * fade;
+    if (a < 0.01) return;
+    if (!milkyWay) return;
+    const k = (0.9 * h * ZOOM ** L) / (2 * GALAXY_RADIUS);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = a;
+    // Past full size the portrait's points of light would show as blocks; soften them as it grows
+    const soften = Math.max(0, k - 1.2) * 3;
+    if (soften > 0.5) ctx.filter = `blur(${soften.toFixed(1)}px)`;
+    ctx.drawImage(milkyWay, cx - SUN_IN_MILKY_WAY.x * k, cy - SUN_IN_MILKY_WAY.y * k, SPRITE * k, SPRITE * k);
+    ctx.filter = 'none';
+    ctx.globalCompositeOperation = 'source-over';
+    // You are here
+    const mark = smooth(-1, -0.5, L) * (1 - smooth(0.1, 0.6, L)) * fade;
+    if (mark > 0.01) {
+      ctx.globalAlpha = mark;
+      ctx.strokeStyle = 'rgba(201,161,91,0.9)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** The Solar System and the Earth, in front of the stars. */
+  function drawHomeFront(L: number, fade: number) {
+    const showSystem = smooth(0.3, 0.85, L) * (1 - smooth(2.05, 2.5, L)) * fade;
+    const showEarth = smooth(0.3, 0.85, L) * fade;
+    if (showEarth < 0.01) return;
+    // Pixels per unit of orbit, and the point the zoom closes in on: the Sun, then the Earth
+    const S = 0.136 * h * ZOOM ** (L - 1);
+    const focus = smooth(1.15, 1.85, L);
+    const fx = earthAt.x * focus;
+    const fy = earthAt.y * focus;
+    const at = (x: number, y: number) => [cx + (x - fx) * S, cy + (y - fy) * S];
+
+    if (showSystem > 0.01) {
+      const [sx, sy] = at(0, 0);
+      const sunR = clamp(0.05 * S, 3, 70);
+      const halo = sunR * 9;
+      if (sx + halo > 0 && sx - halo < w && sy + halo > 0 && sy - halo < h) {
+        ctx.globalAlpha = showSystem;
+        ctx.drawImage(sunSprite, sx - halo, sy - halo, halo * 2, halo * 2);
+        ctx.fillStyle = '#fff6e4';
+        ctx.beginPath();
+        ctx.arc(sx, sy, sunR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.lineWidth = 1;
+      for (const p of orbiters) {
+        const rx = p.r * S;
+        if (rx > 6 * Math.max(w, h)) continue;
+        ctx.globalAlpha = 0.3 * showSystem;
+        ctx.strokeStyle = '#c9a15b';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, rx, rx * ECLIPTIC_TILT, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        if (p.key === 'earth') continue;
+        const [px, py] = at(p.x, p.y);
+        const look = ORBITER_LOOK[p.key];
+        ctx.globalAlpha = showSystem;
+        ctx.fillStyle = look.color;
+        ctx.beginPath();
+        ctx.arc(px, py, look.r, 0, Math.PI * 2);
+        ctx.fill();
+        if (p.key === 'saturn') {
+          ctx.strokeStyle = look.color;
+          ctx.beginPath();
+          ctx.ellipse(px, py, look.r * 2.4, look.r * 0.9, -0.3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // The Earth: a blue dot that grows into the globe, faster than the orbits around it
+    const [ex, ey] = at(earthAt.x, earthAt.y);
+    const er = 0.3 * h * ZOOM ** ((L - 2) * 1.6);
+    const asGlobe = globe.done ? smooth(3, 8, er) : 0;
+    if (asGlobe < 1) {
+      ctx.globalAlpha = showEarth * (1 - asGlobe);
+      ctx.fillStyle = ORBITER_LOOK.earth.color;
+      ctx.beginPath();
+      ctx.arc(ex, ey, Math.max(ORBITER_LOOK.earth.r, er), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (asGlobe > 0 && er < 8 * Math.max(w, h)) {
+      // A thin blue atmosphere, then the globe
+      const glow = ctx.createRadialGradient(ex, ey, er * 0.96, ex, ey, er * 1.12);
+      glow.addColorStop(0, 'rgba(120,170,255,0.45)');
+      glow.addColorStop(1, 'rgba(120,170,255,0)');
+      ctx.globalAlpha = showEarth * asGlobe;
+      ctx.fillStyle = glow;
+      ctx.fillRect(ex - er * 1.2, ey - er * 1.2, er * 2.4, er * 2.4);
+      ctx.drawImage(globe.canvas, ex - er, ey - er, er * 2, er * 2);
+      // Amman, on the dawn line
+      const mark = smooth(1.6, 1.9, L) * (1 - smooth(2.2, 2.5, L)) * fade;
+      if (mark > 0.01) {
+        ctx.globalAlpha = mark;
+        ctx.fillStyle = '#f0c27a';
+        ctx.beginPath();
+        ctx.arc(ex, ey, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(201,161,91,0.9)';
+        ctx.beginPath();
+        ctx.arc(ex, ey, 9, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   /** How much a galaxy's section is the current one, for tinting space. */
@@ -360,8 +502,13 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const pre = smooth(0, 0.6, end);
     const dawn = smooth(0.4, 1, end);
     const twinkle = reduced ? 0 : Math.max(air, dawn);
-    const busy = twinkle > 0.01 || meteors.active() || !galaxies.every((g) => g.sprite || g.z - z > (FAR + 4) * F);
-    const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${end.toFixed(4)}|${w}|${h}`;
+    // Prepare the homecoming a little at a time, long before it is needed
+    if (!globe.done) globe.step(48);
+    if (!milkyWay && u > lastStop - 5 && galaxies.every((g) => g.sprite || g.z - z > (FAR + 4) * F)) {
+      milkyWay = paintGalaxy('milkyway', makeCanvas);
+    }
+    const busy = twinkle > 0.01 || meteors.active() || !globe.done || !galaxies.every((g) => g.sprite || g.z - z > (FAR + 4) * F);
+    const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
     if (!busy && key === drawnKey) return;
     drawnKey = key;
 
@@ -382,7 +529,12 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     }
     // Galaxies and their color dim in a fast flight (a jump), so they never flash past
     drawSpace(space, (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))));
+    // Home fades into the dawn sky as the city comes into view
+    const L = homeLevel(home);
+    const homeFade = 1 - smooth(0.05, 0.45, end);
+    drawHomeBack(L, homeFade);
     drawStars(now / 1000, space, 1 - 0.55 * dawn, twinkle);
+    drawHomeFront(L, homeFade);
 
     if (!reduced) {
       const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
@@ -442,12 +594,14 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
           stride = msg.stride;
           cy = msg.cy;
           placeGalaxies(msg.legs);
+          lastStop = Math.max(0, ...msg.legs.map((l) => l.last));
           buildField();
           break;
         case 'camera':
           z = msg.z;
           speed = msg.speed;
           u = msg.u;
+          home = msg.home;
           end = msg.end;
           horizonY = msg.horizonY;
           return;

@@ -178,3 +178,44 @@ export function planets(ms: number) {
     };
   });
 }
+
+/** Positions around the Sun (au, J2000 ecliptic), for the solar system at the end of the journey. */
+export const ORBITERS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn'] as const;
+export function solarSystem(ms: number) {
+  const T = (julianDay(ms) - 2451545.0) / 36525;
+  return ORBITERS.map((key) => ({ key, a: ELEMENTS[key][0], ...heliocentric(key, T) }));
+}
+
+/** The next sunrise in Amman after `ms` (the Sun's upper limb at the horizon, with refraction). */
+export function nextSunrise(ms: number): number {
+  const RISE = -0.833;
+  const STEP = 10 * 60_000;
+  let t = ms;
+  let below = sunAltitude(t) < RISE;
+  for (let i = 0; i < (36 * HOUR) / STEP; i++) {
+    const next = t + STEP;
+    const nowBelow = sunAltitude(next) < RISE;
+    if (below && !nowBelow) {
+      // Bisect the crossing to well under a second
+      let lo = t;
+      let hi = next;
+      for (let k = 0; k < 24; k++) {
+        const mid = (lo + hi) / 2;
+        if (sunAltitude(mid) < RISE) lo = mid;
+        else hi = mid;
+      }
+      return hi;
+    }
+    below = nowBelow;
+    t = next;
+  }
+  return ms;
+}
+
+/** Where on Earth the Sun is straight overhead (radians, longitude east-positive). */
+export function subsolarPoint(ms: number) {
+  const s = sun(ms);
+  const gmst = siderealTime(ms) - AMMAN.lon * RAD;
+  const lon = ((((s.ra - gmst) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+  return { lat: s.dec, lon };
+}
