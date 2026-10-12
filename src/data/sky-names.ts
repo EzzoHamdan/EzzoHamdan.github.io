@@ -5,9 +5,6 @@
  * the proper name in the d3-celestial catalog (scripts/make-sky-catalog.mjs looks each one up
  * by this name and fails if it is missing). English pages show `en` plus `origin` (Latin
  * transliteration); Arabic pages show `ar` only.
- *
- * Constellations: labels shown at the top of the page, keyed by the IAU abbreviation used in
- * the catalog. Constellations not listed here are drawn without a label.
  */
 export interface StarName {
   en: string;
@@ -59,40 +56,3 @@ export const showers = [
   { en: 'Leonids', ar: 'الأسديات', month: 11, day: 17, ra: 152, dec: 22 },
   { en: 'Geminids', ar: 'التوأميات', month: 12, day: 14, ra: 112, dec: 33 },
 ];
-
-export const constellationNames: Record<string, { en: string; ar: string }> = {
-  And: { en: 'Andromeda', ar: 'المرأة المسلسلة' },
-  Aql: { en: 'Aquila', ar: 'العقاب' },
-  Aqr: { en: 'Aquarius', ar: 'الدلو' },
-  Ari: { en: 'Aries', ar: 'الحمل' },
-  Aur: { en: 'Auriga', ar: 'ممسك الأعنّة' },
-  Boo: { en: 'Boötes', ar: 'العوّاء' },
-  Cap: { en: 'Capricornus', ar: 'الجدي' },
-  Cas: { en: 'Cassiopeia', ar: 'ذات الكرسي' },
-  Cep: { en: 'Cepheus', ar: 'الملتهب' },
-  Cet: { en: 'Cetus', ar: 'قيطس' },
-  CMa: { en: 'Canis Major', ar: 'الكلب الأكبر' },
-  CMi: { en: 'Canis Minor', ar: 'الكلب الأصغر' },
-  Cnc: { en: 'Cancer', ar: 'السرطان' },
-  CrB: { en: 'Corona Borealis', ar: 'الإكليل الشمالي' },
-  Cyg: { en: 'Cygnus', ar: 'الدجاجة' },
-  Dra: { en: 'Draco', ar: 'التنين' },
-  Gem: { en: 'Gemini', ar: 'التوأمان' },
-  Her: { en: 'Hercules', ar: 'الجاثي' },
-  Hya: { en: 'Hydra', ar: 'الشجاع' },
-  Leo: { en: 'Leo', ar: 'الأسد' },
-  Lib: { en: 'Libra', ar: 'الميزان' },
-  Lyr: { en: 'Lyra', ar: 'القيثارة' },
-  Oph: { en: 'Ophiuchus', ar: 'الحوّاء' },
-  Ori: { en: 'Orion', ar: 'الجبّار' },
-  Peg: { en: 'Pegasus', ar: 'الفرس الأعظم' },
-  Per: { en: 'Perseus', ar: 'برشاوس' },
-  Psc: { en: 'Pisces', ar: 'الحوت' },
-  PsA: { en: 'Piscis Austrinus', ar: 'الحوت الجنوبي' },
-  Sco: { en: 'Scorpius', ar: 'العقرب' },
-  Sgr: { en: 'Sagittarius', ar: 'القوس' },
-  Tau: { en: 'Taurus', ar: 'الثور' },
-  UMa: { en: 'Ursa Major', ar: 'الدب الأكبر' },
-  UMi: { en: 'Ursa Minor', ar: 'الدب الأصغر' },
-  Vir: { en: 'Virgo', ar: 'العذراء' },
-};

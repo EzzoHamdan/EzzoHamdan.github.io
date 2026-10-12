@@ -57,16 +57,6 @@ export function sunAltitude(ms: number): number {
   return Math.asin(toHorizontal(s.ra, Math.sin(s.dec), Math.cos(s.dec), siderealTime(ms)).u) / RAD;
 }
 
-/**
- * The apex of Earth's motion around the Sun: on the ecliptic, 90° west of the Sun. Sporadic
- * meteors radiate from around it, and it climbs highest just before dawn, which is why more
- * shooting stars are seen at the end of the night.
- */
-export function apex(ms: number) {
-  const s = sun(ms);
-  return eclipticToEquatorial(s.lambda - 90, s.eps);
-}
-
 // Galactic (l, b) to equatorial J2000, for drawing the Milky Way along the galactic plane
 const NGP_RA = 192.85948 * RAD;
 const NGP_DEC = 27.12825 * RAD;
@@ -80,44 +70,27 @@ export function galacticToEquatorial(l: number, b: number) {
 }
 
 export interface Night {
-  /** 'now' when it is dark in Amman; otherwise the page shows tonight from 21:00. */
+  /** 'now' when it is dark in Amman; otherwise the page shows tonight at 21:00. */
   mode: 'now' | 'tonight';
-  /** Top of the page, in ms since epoch. */
-  start: number;
-  /** Bottom of the page: dawn, when the Sun reaches 4° below the horizon. */
-  end: number;
-  /** Index into `showers` when the night is within a day of a shower's peak, else -1. */
+  /** The moment the sky is drawn for, in ms since epoch. */
+  time: number;
+  /** Index into `showers` when tonight is within a day of a shower's peak, else -1. */
   shower: number;
 }
 
-/** The night the page scrolls through: from now (or 21:00 tonight) to Amman's next dawn. */
+/** The moment the sky shows: now if it is dark in Amman, otherwise 21:00 tonight. */
 export function night(now = Date.now()): Night {
   const dark = sunAltitude(now) < -8;
-  let start = now;
+  let time = now;
   if (!dark) {
     const local = new Date(now + AMMAN.utcOffsetHours * HOUR);
-    start = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 21) - AMMAN.utcOffsetHours * HOUR;
-    if (start < now) start += 24 * HOUR;
+    time = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 21) - AMMAN.utcOffsetHours * HOUR;
+    if (time < now) time += 24 * HOUR;
   }
-
-  // Step forward to dawn, then refine by bisection
-  const DAWN = -4;
-  let lo = start;
-  let hi = start;
-  for (let i = 0; i < 18 * 6 && sunAltitude(hi) < DAWN; i++) {
-    lo = hi;
-    hi += HOUR / 6;
-  }
-  for (let i = 0; i < 12; i++) {
-    const mid = (lo + hi) / 2;
-    if (sunAltitude(mid) < DAWN) lo = mid;
-    else hi = mid;
-  }
-
-  const date = new Date(start + AMMAN.utcOffsetHours * HOUR);
+  const date = new Date(time + AMMAN.utcOffsetHours * HOUR);
   const day = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   const shower = showers.findIndex(
     (s) => Math.abs(day - Date.UTC(date.getUTCFullYear(), s.month - 1, s.day)) <= 86_400_000,
   );
-  return { mode: dark ? 'now' : 'tonight', start, end: Math.max(hi, start + HOUR), shower };
+  return { mode: dark ? 'now' : 'tonight', time, shower };
 }

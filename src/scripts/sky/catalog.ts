@@ -1,6 +1,5 @@
 /**
- * The star catalog, prepared once into flat typed arrays so projecting ~2,500 points per frame
- * allocates nothing.
+ * The star catalog, prepared once into flat typed arrays so projecting it allocates nothing.
  */
 import sky from '../../data/sky.json';
 import { AMMAN, RAD } from './astro';
@@ -78,34 +77,6 @@ export const stars = new PointSet(
 );
 export const starMag = Float32Array.from(sky.stars, (s) => s[2]);
 export const starColor = Uint8Array.from(sky.stars, (s) => s[3]);
-
-// Constellation figures: all vertices in one set, segments as index pairs into it
-const vRa: number[] = [];
-const vDec: number[] = [];
-const segA: number[] = [];
-const segB: number[] = [];
-export const constellations = sky.constellations.map((c) => {
-  const first = segA.length;
-  for (const line of c.lines) {
-    const base = vRa.length;
-    for (let j = 0; j < line.length; j += 2) {
-      vRa.push(line[j]);
-      vDec.push(line[j + 1]);
-    }
-    for (let j = 1; j < line.length / 2; j++) {
-      segA.push(base + j - 1);
-      segB.push(base + j);
-    }
-  }
-  return { id: c.id, rank: c.rank, first, last: segA.length };
-});
-export const vertices = new PointSet(vRa, vDec);
-export const segmentsA = Uint16Array.from(segA);
-export const segmentsB = Uint16Array.from(segB);
-export const centers = new PointSet(
-  sky.constellations.map((c) => c.center[0]),
-  sky.constellations.map((c) => c.center[1]),
-);
 
 // Arabic-named stars, in the order of `starNames`
 export const named = new PointSet(
