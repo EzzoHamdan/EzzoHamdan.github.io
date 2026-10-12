@@ -26,9 +26,9 @@
 
 **Limits:**
 
-- **JavaScript:** about 4 KB gzipped on first load. The sky worker, including the 1,627-star
-  catalog, is about 17 KB gzipped and loads after the page has painted. Everything else is HTML
-  and CSS.
+- **JavaScript:** about 5.5 KB gzipped on first load. The sky worker, including the 1,627-star
+  catalog and the planet ephemeris, is about 20 KB gzipped and loads after the page has painted.
+  Everything else is HTML and CSS.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
 - **Hosting:** GitHub Pages serves static files only; there is no server code anywhere.
 
@@ -79,12 +79,12 @@ nothing deploys from a feature branch.
 | Profile page (used by both languages) | [`src/components/ProfilePage.astro`](src/components/ProfilePage.astro) |
 | `<head>`: meta, Open Graph, hreflang, fonts | [`src/layouts/Base.astro`](src/layouts/Base.astro) |
 | Sky: page side (scroll, hero caption, star names) | [`src/components/Sky.astro`](src/components/Sky.astro) |
-| Sky: drawing, twinkle, scroll dimming, shooting-star rate | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
-| Sky: Amman, sidereal time, Sun, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
+| Sky: atmosphere colors, drawing, twinkle, scroll dimming, shooting-star rate, wishes | [`src/scripts/sky/renderer.ts`](src/scripts/sky/renderer.ts) (runs in [`worker.ts`](src/scripts/sky/worker.ts)) |
+| Sky: Amman, sidereal time, Sun, planets, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
 | Sky: catalog arrays and the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
 | Sky: shooting stars (one shared direction, tapered trails) | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
-| Star and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
+| Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
 | Amman skyline at the footer dawn | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
@@ -94,16 +94,20 @@ nothing deploys from a feature branch.
 
 ## 3. How the sky works
 
-The background is the real, still sky over Amman: stars to magnitude 5 and the Milky Way,
-positioned for right now (or 21:00 tonight if it is daytime in Amman) and refreshed every minute.
-**Scrolling never moves a star.** It only changes how bright the sky is and how many shooting
-stars fall.
+The background is the real, still sky over Amman: stars to magnitude 5, the naked-eye planets
+and the Milky Way, positioned for right now (or 21:00 tonight if it is daytime in Amman) and
+refreshed every minute. Stars twinkle; planets shine steadily, as they do in the real sky.
+**Scrolling never moves anything in the sky.** It only changes the atmosphere color, how bright
+the sky is, and how many shooting stars fall. Clicking empty sky makes a wish: a shooting star
+launches from that point.
 
 ```text
 night() ──► moment (now, or 21:00 tonight) ──► sidereal time ──► PointSet.project ──► stars, Milky Way
                                                                                  (still; re-projected each minute)
-scroll position 0..1 ──(Sky.astro)──► worker: eased progress ──► sky brightness  (dims behind reading, fades at dawn)
+scroll position 0..1 ──(Sky.astro)──► worker: eased progress ──► atmosphere color (dusk → midnight → dawn)
+                                                             ├─► sky brightness  (dims behind reading, fades at dawn)
                                                              └─► shooting-star rate (rare at top → many at the end)
+click on empty sky ────(Sky.astro)──► worker: meteors.launch(x, y)
 ```
 
 #### 3. (rendered)
@@ -113,28 +117,32 @@ scroll position 0..1 ──(Sky.astro)──► worker: eased progress ──►
 flowchart LR
   night[night] --> lst[sidereal time] --> project[PointSet.project] --> sky[(stars, Milky Way)]
   scroll([scroll]) --> progress[eased progress]
+  progress --> air[atmosphere color]
   progress --> dim[sky brightness]
+  click([click on empty sky]) --> wish[meteors.launch]
   progress --> rate[shooting-star rate]
   dim --> sky
   rate --> meteors[createMeteors]
 ```
 
-Read it as: scroll feeds only brightness and the shooting-star rate. No arrow runs from scroll to
-star positions, and that is deliberate (see §7).
+Read it as: scroll feeds only color, brightness and the shooting-star rate. No arrow runs from
+scroll to star or planet positions, and that is deliberate (see §7).
 
 > **Guaranteed:** star positions depend only on the clock, never on scroll.
-> **Reduced motion:** a still sky with no twinkle and no shooting stars.
-> **Calm** (article pages, `<Base calmSky>`): half brightness and rare shooting stars.
+> **Reduced motion:** a still sky with no twinkle, no shooting stars and no wishes. The atmosphere
+> color still follows scroll, since it is color, not motion.
+> **Calm** (article pages, `<Base calmSky>`): a fixed midnight color, half brightness, rare
+> shooting stars and no wishes.
 
 | Where you are | What the sky does |
 | --- | --- |
-| Top of the page | Full brightness; a shooting star every few seconds |
-| Reading sections | About 30% dimmer behind text |
-| Approaching the end | Shooting stars build, plus a bolide every few seconds past 70% |
-| Bottom (contact) | Stars fade into the CSS dawn while shooting stars fall over the Amman skyline |
+| Top of the page | Dusk: a violet afterglow low on the screen; full brightness; a shooting star every few seconds |
+| Reading sections | Deep midnight, about 30% dimmer behind text |
+| Approaching the end | Pre-dawn violet; shooting stars build, plus a bolide every few seconds past 70% |
+| Bottom (contact) | Rose-amber dawn; stars fade while shooting stars fall over the Amman skyline |
 
-**Tunables** (`src/scripts/sky/renderer.ts` unless noted): brightness is the `dim` line in
-`render`; the shooting-star rate is the `rate` line (`0.25 + 9 * smooth(0.5, 0.97, p) ** 1.5`);
+**Tunables** (`src/scripts/sky/renderer.ts` unless noted): the atmosphere colors are the
+`ATMOSPHERE` table; brightness is the `dim` line in `render`; the shooting-star rate is the `rate` line (`0.25 + 9 * smooth(0.5, 0.97, p) ** 1.5`);
 the shared direction is `DX`/`DY` in `meteors.ts`.
 
 ## 4. Change recipes
@@ -195,6 +203,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
   renderer on the main thread, which is why `sky/renderer.ts` is imported in two places.
 - ⚠ **`src/data/sky.json` is generated.** Hand edits are lost the next time
   `scripts/make-sky-catalog.mjs` runs. It is BSD-3-Clause data (see Credits).
+- ⚠ **Planet positions are valid from 1800 to 2050.** They use Standish's approximate Keplerian
+  elements (table 1, `astro.ts::ELEMENTS`). After 2050, switch to table 2 (valid 3000 BC to
+  3000 AD), which adds correction terms for Jupiter and Saturn.
+- **"Empty sky" means "not over actual text"** (`Sky.astro::onSky`). Text blocks are tested
+  against their real line boxes, so the space beside a heading counts as sky. Without that, the
+  empty-looking area right of the name didn't launch wishes.
 - **Jordan has no daylight saving time** (UTC+3 all year since 2022), so `sky/astro.ts` uses a
   fixed offset. If that ever changes, the caption and the 21:00 "tonight" sky drift by an hour.
 - **Unlike what you'd expect, east is on the left** of the sky. The projection shows the sky as you
