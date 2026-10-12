@@ -47,21 +47,21 @@ const rift = band(2.5, [0.5], (l) => ({
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
 export function drawMilkyWay(ctx: Ctx, sprite: CanvasImageSource, lst: number, view: View, scale: number) {
-  const v = { cx: view.cx * scale, cy: view.cy * scale, R: view.R * scale };
+  const v = { ...view, cx: view.cx * scale, cy: view.cy * scale, f: view.f * scale };
   glow.points.project(lst, v);
   rift.points.project(lst, v);
-  const { x, y, u } = glow.points;
+  const { x, y, u, k } = glow.points;
   for (let i = 0; i < glow.samples.length; i++) {
-    if (u[i] < -0.05) continue;
-    const r = (glow.samples[i].width * v.R) / (1 + u[i]);
+    if (u[i] < -0.05 || !k[i]) continue;
+    const r = glow.samples[i].width * k[i];
     // Fainter toward the horizon, where the light passes through more air
     ctx.globalAlpha = 0.075 * glow.samples[i].light * Math.min(1, (u[i] + 0.05) * 5);
     ctx.drawImage(sprite, x[i] - r, y[i] - r, r * 2, r * 2);
   }
   ctx.globalCompositeOperation = 'destination-out';
   for (let i = 0; i < rift.samples.length; i++) {
-    if (!rift.samples[i].light || rift.points.u[i] < 0) continue;
-    const r = (rift.samples[i].width * v.R) / (1 + rift.points.u[i]);
+    if (!rift.samples[i].light || rift.points.u[i] < 0 || !rift.points.k[i]) continue;
+    const r = rift.samples[i].width * rift.points.k[i];
     ctx.globalAlpha = 0.3;
     ctx.drawImage(sprite, rift.points.x[i] - r, rift.points.y[i] - r, r * 2, r * 2);
   }

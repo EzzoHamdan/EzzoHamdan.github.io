@@ -1,5 +1,6 @@
 <canvas id="sky" aria-hidden="true"></canvas>
 <div class="star-label" id="star-label" aria-hidden="true" hidden></div>
+<p class="sky-view" id="sky-view" aria-hidden="true" hidden></p>
 
 <script>
   import type { SkyEvent, SkyMessage } from '../scripts/sky/renderer';
@@ -13,8 +14,28 @@
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const size = () => ({ width: innerWidth, height: innerHeight, dpr: Math.min(devicePixelRatio || 1, 2) });
 
+  // What the camera is looking at, as it moves from section to section
+  const viewCaption = document.getElementById('sky-view') as HTMLElement;
+  const directions = {
+    en: {
+      overhead: 'Overhead', n: 'Looking north', ne: 'Looking northeast', e: 'Looking east', se: 'Looking southeast',
+      s: 'Looking south', sw: 'Looking southwest', w: 'Looking west', nw: 'Looking northwest',
+    },
+    ar: {
+      overhead: 'فوقنا', n: 'نحو الشمال', ne: 'نحو الشمال الشرقي', e: 'نحو الشرق', se: 'نحو الجنوب الشرقي',
+      s: 'نحو الجنوب', sw: 'نحو الجنوب الغربي', w: 'نحو الغرب', nw: 'نحو الشمال الغربي',
+    },
+  }[lang];
+  function showView(e: Extract<SkyEvent, { type: 'view' }>) {
+    const body = e.kind === 'planet' ? planetNames[PLANETS[e.index]] : e.kind === 'star' ? starNames[e.index] : null;
+    const name = body ? (lang === 'ar' ? body.ar : body.en) : '';
+    viewCaption.textContent = e.dawn
+      ? lang === 'ar' ? 'نحو الشرق، حيث يطلع فجر عمّان' : 'Looking east, toward dawn over Amman'
+      : name ? `${directions[e.direction]}: ${name}` : directions[e.direction];
+  }
+
   function onSkyEvent(e: SkyEvent) {
-    if (e.type !== 'hover') return;
+    if (e.type === 'view') return showView(e);
     if (e.index < 0) {
       starLabel.hidden = true;
       return;
@@ -93,7 +114,10 @@
     const onScroll = () => {
       ticking = false;
       const max = document.documentElement.scrollHeight - innerHeight;
-      post({ type: 'scroll', progress: max > 0 ? Math.min(1, scrollY / max) : 0 });
+      const progress = max > 0 ? Math.min(1, scrollY / max) : 0;
+      post({ type: 'scroll', progress });
+      // The hero has its own caption; the view caption takes over once the journey starts
+      viewCaption.hidden = calm || progress < 0.06 || !viewCaption.textContent;
     };
     addEventListener(
       'scroll',
@@ -105,6 +129,24 @@
       { passive: true },
     );
     onScroll();
+
+    // Tell the sky where each section sits along the scroll, so the camera can hold a shot per
+    // section, and where the skyline's far hills will be on screen at the very end
+    const sendScenes = () => {
+      const max = document.documentElement.scrollHeight - innerHeight;
+      if (max <= 0) return;
+      const anchors = [...document.querySelectorAll<HTMLElement>('main > section[id]')].map((el) => {
+        // A section's shot is reached as its heading comes into view, 30% down the screen
+        const top = el.getBoundingClientRect().top + scrollY;
+        return { id: el.id, at: Math.min(1, Math.max(0, (top - innerHeight * 0.3) / max)) };
+      });
+      const skyline = document.querySelector('.skyline')?.getBoundingClientRect();
+      const horizonY = skyline ? skyline.top + scrollY + skyline.height * 0.64 - max : NaN;
+      post({ type: 'scenes', anchors, horizonY });
+    };
+    sendScenes();
+    document.fonts.ready.then(sendScenes);
+    new ResizeObserver(() => sendScenes()).observe(document.body);
 
     // Hover names and wishes only over empty sky, so reading and links are never interrupted.
     // Controls and boxes always count as content; text blocks only where their lines actually are,

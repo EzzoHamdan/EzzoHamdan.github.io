@@ -2,23 +2,32 @@
  * The sky over Amman, drawn on one canvas. Runs in a Web Worker on an OffscreenCanvas when the
  * browser supports it, or on the page otherwise.
  *
- * A still, real sky: stars to magnitude 5, the naked-eye planets and the Milky Way where they are
- * over Amman right now (or tonight at 21:00 in daylight), with shooting stars on top. Stars
- * twinkle; planets shine steadily, as they do in the real sky.
+ * A real sky: stars to magnitude 5, the naked-eye planets and the Milky Way where they are over
+ * Amman right now (or tonight at 21:00 in daylight). Stars twinkle; planets shine steadily, as
+ * they do in the real sky.
  *
- * Scrolling turns the dome: the whole page spans six hours of real sky rotation around Polaris,
- * eased so it glides. There are no trails, so the stars stay crisp behind text. Scroll also sets
- * the atmosphere (dusk at the top, deep midnight while reading, dawn at the end), how bright the
- * sky is, and how many shooting stars fall. Clicking empty sky makes a wish: a shooting star
- * launches from that point.
+ * Scrolling is a journey through the dome:
+ * - Time: the whole page spans six hours of sky rotation around Polaris.
+ * - Camera: each page section is a shot (SHOTS). The camera holds while a section is read and
+ *   glides to the next one between sections: straight up in the hero, south, east, north, and
+ *   finally down to the eastern horizon at dawn, where the horizon lines up with the footer's
+ *   Amman skyline.
+ * - Atmosphere: dusk at the top, deep midnight while reading, dawn at the end.
+ * - Shooting stars: rare at the top, more toward the end, some falling behind the city.
+ * Everything is eased, and nothing ever leaves trails, so text stays crisp.
  *
- * Reduced motion: a still sky (no rotation, twinkle, shooting stars or wishes).
- * Calm (article pages): a dimmer, still midnight sky with rare shooting stars.
+ * Clicking empty sky makes a wish: a shooting star launches from that point.
+ *
+ * Reduced motion: a still overhead sky (no rotation, camera moves, twinkle, shooting stars or
+ * wishes). Calm (article pages): a dimmer, still overhead sky with rare shooting stars.
  */
-import { PLANETS, night, planets, siderealTime } from './astro';
-import { named, projectOne, starColor, starMag, stars, type View } from './catalog';
+import { PLANETS, RAD, night, planets, siderealTime } from './astro';
+import { camera, named, projectOne, projectVector, starColor, starMag, stars, type View } from './catalog';
 import { createMeteors } from './meteors';
+import { starNames } from '../../data/sky-names';
 import { drawMilkyWay } from './milky-way';
+
+export type Direction = 'overhead' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
 
 export type SkyMessage =
   | {
@@ -32,20 +41,29 @@ export type SkyMessage =
     }
   | { type: 'resize'; width: number; height: number; dpr: number }
   | { type: 'scroll'; progress: number }
+  /** Where each section sits along the scroll (0..1), and the skyline's horizon line at the end. */
+  | { type: 'scenes'; anchors: { id: string; at: number }[]; horizonY: number }
   | { type: 'motion'; reduced: boolean }
   | { type: 'visible'; visible: boolean }
   | { type: 'pointer'; x: number; y: number }
   | { type: 'pointer-leave' }
   | { type: 'wish'; x: number; y: number };
 
-/**
- * What the pointer is over: a star (index into `starNames`) or a planet (index into `PLANETS`),
- * with its screen position; `index: -1` hides the label.
- */
-export type SkyEvent = { type: 'hover'; kind: 'star' | 'planet'; index: number; x: number; y: number };
+export type SkyEvent =
+  /** A star (index into `starNames`) or planet (index into `PLANETS`) under the pointer; -1 hides. */
+  | { type: 'hover'; kind: 'star' | 'planet'; index: number; x: number; y: number }
+  /** What the camera is looking at: the named star or planet nearest the center, if any. */
+  | { type: 'view'; kind: 'star' | 'planet' | 'none'; index: number; direction: Direction; dawn: boolean };
 
 type Canvas = HTMLCanvasElement | OffscreenCanvas;
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+interface Shot {
+  az: number;
+  alt: number;
+  fov: number;
+  /** 1 = the stereographic dome; toward 0 = a camera lens with a straight horizon. */
+  lens: number;
+}
 
 const STAR_COLORS = ['#b4c6ff', '#f2f4ff', '#fff3df', '#ffd3a3'];
 const PLANET_COLORS: Record<(typeof PLANETS)[number], string> = {
@@ -55,9 +73,25 @@ const PLANET_COLORS: Record<(typeof PLANETS)[number], string> = {
   jupiter: '#ffe9c9',
   saturn: '#f5dca0',
 };
+const GROUND = '#0b1024'; // matches the far hills of the footer skyline
 const MINUTE = 60_000;
 // How far the dome turns over the whole page: six hours of sky, 90° around the pole
 const DOME_SPAN = 6 * 3_600_000;
+
+/**
+ * Camera shots by section id: azimuth (degrees from north toward east), altitude, field of view
+ * (degrees from the center to a screen corner) and lens. `alt: NaN` means "put the horizon on
+ * the skyline".
+ */
+const SHOTS: Record<string, Shot> = {
+  hero: { az: 180, alt: 90, fov: 90, lens: 1 }, // straight up: the whole dome, north at the top
+  about: { az: 180, alt: 72, fov: 84, lens: 1 }, // tilting toward the south
+  experience: { az: 200, alt: 55, fov: 78, lens: 1 }, // the southern sky
+  projects: { az: 105, alt: 50, fov: 74, lens: 1 }, // east, where new stars rise
+  education: { az: 0, alt: 45, fov: 74, lens: 1 }, // north, toward Polaris, the guiding star
+  // The eastern horizon at dawn over Amman, through a near-rectilinear lens so it lies flat
+  contact: { az: 95, alt: NaN, fov: 48, lens: 0.12 },
+};
 
 /**
  * The atmosphere along the page: [scroll position, sky color at the top, color at the bottom].
@@ -117,6 +151,9 @@ function softSprite(size: number, rgb: string, core = 0.2): Canvas {
 
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(',');
 const starPhase = Float32Array.from({ length: stars.length }, () => Math.random() * Math.PI * 2);
+const WINDS: Direction[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+// Education looks north to Polaris, the star travellers steered by
+const POLARIS = starNames.findIndex((s) => s.en === 'Polaris');
 
 export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () => {}) {
   const ctx = canvas.getContext('2d') as Ctx;
@@ -130,16 +167,22 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   const meteors = createMeteors(makeCanvas);
 
   let w = 0, h = 0, dpr = 1;
-  let view: View = { cx: 0, cy: 0, R: 1 };
   let reduced = false, calm = false, visible = true, started = false;
   let moment = night();
   let planetPos = planets(moment.time);
   let refreshedAt = 0;
-  let lst = NaN;
   let target = 0, progress = 0;
-  let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12);
-  let hovered = { kind: 'star' as 'star' | 'planet', index: -1 };
+  let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12), startedAt = 0;
+  let anchors: { id: string; at: number }[] = [];
+  let horizonY = NaN;
+  let shot: Shot = SHOTS.hero;
+  let view: View = camera(1, 1, 180, 90, 90, 1);
+  let lst = NaN;
+  let viewKey = '';
+  let lastViewEvent = '';
   let floor = 0.9;
+  let section = 'hero';
+  let hovered = { kind: 'star' as 'star' | 'planet', index: -1 };
   let planetsNow: { key: (typeof PLANETS)[number]; x: number; y: number; u: number; mag: number }[] = [];
 
   // The top of the page is "right now"; refresh each minute so a long visit stays current
@@ -147,12 +190,74 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     moment = night();
     planetPos = planets(moment.time);
     refreshedAt = Date.now();
-    lst = NaN;
+    viewKey = '';
   }
 
-  // Everything turns together: stars, named stars, planets and the Milky Way
-  function reproject(nextLst: number) {
-    lst = nextLst;
+  /** The highest point of the visible horizon on screen for a camera, or Infinity if none. */
+  function horizonTop(v: View) {
+    let top = Infinity;
+    for (let a = -88; a <= 88; a += 4) {
+      const az = (Math.atan2(v.fwd[0], v.fwd[1]) / RAD + a) * RAD;
+      const e = Math.sin(az);
+      const n = Math.cos(az);
+      if (e * v.fwd[0] + n * v.fwd[1] <= 0) continue;
+      const p = projectVector(e, n, 0, v);
+      if (p.k && p.x >= 0 && p.x <= w) top = Math.min(top, p.y);
+    }
+    return top;
+  }
+
+  // Shots adjusted to this screen, worked out once per size (see `resolve`)
+  let resolved: Record<string, Shot> = {};
+
+  /** A section's shot, adjusted to this screen. */
+  function resolve(id: string): Shot {
+    if (resolved[id]) return resolved[id];
+    const s = SHOTS[id] ?? SHOTS.hero;
+    let shot: Shot;
+    if (Number.isNaN(s.alt)) {
+      // Tilt down just enough that the real horizon falls on the skyline's far hills
+      const y = Number.isNaN(horizonY) ? h * 0.75 : horizonY;
+      let lo = 0;
+      let hi = 60;
+      for (let i = 0; i < 24; i++) {
+        const mid = (lo + hi) / 2;
+        const ahead = projectVector(Math.sin(s.az * RAD), Math.cos(s.az * RAD), 0, camera(w, h, s.az, mid, s.fov, s.lens));
+        if (ahead.y < y) lo = mid;
+        else hi = mid;
+      }
+      shot = { ...s, alt: (lo + hi) / 2 };
+    } else {
+      // Everywhere else, tilt up until no part of the horizon shows, not even where it curves
+      // up toward the sides, so no ground appears behind reading text
+      let alt = s.alt;
+      while (alt < 90 && horizonTop(camera(w, h, s.az, alt, s.fov, s.lens)) < h + 10) alt += 1;
+      shot = { ...s, alt };
+    }
+    resolved[id] = shot;
+    return shot;
+  }
+
+  /** The camera for a scroll position: hold on each section's shot, glide between them. */
+  function shotAt(p: number): Shot {
+    if (reduced || calm || anchors.length === 0) return resolve('hero');
+    let i = 0;
+    while (i < anchors.length - 1 && anchors[i + 1].at <= p) i++;
+    const a = anchors[i];
+    const b = anchors[Math.min(i + 1, anchors.length - 1)];
+    const A = resolve(a.id);
+    section = a.id;
+    if (a === b || p <= a.at) return A;
+    const B = resolve(b.id);
+    const t = smooth(0.18, 0.82, (p - a.at) / (b.at - a.at));
+    if (t > 0.5) section = b.id;
+    const dAz = ((B.az - A.az + 540) % 360) - 180;
+    const mix = (x: number, y: number) => x + (y - x) * t;
+    return { az: A.az + dAz * t, alt: mix(A.alt, B.alt), fov: mix(A.fov, B.fov), lens: mix(A.lens, B.lens) };
+  }
+
+  // Everything moves together: stars, named stars, planets and the Milky Way
+  function reproject() {
     stars.project(lst, view);
     named.project(lst, view);
     planetsNow = planetPos.map((pl) => ({ key: pl.key, mag: pl.mag, ...projectOne(pl.ra, pl.dec, lst, view) }));
@@ -164,14 +269,15 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     for (let i = 0; i < stars.length; i++) {
       const u = stars.u[i];
       if (u < 0) continue;
+      const x = stars.x[i];
+      const y = stars.y[i];
+      if (x < -20 || y < -20 || x > w + 20 || y > h + 20) continue;
       const mag = starMag[i];
       const twinkle = reduced || mag < 1 ? 1 : 0.78 + 0.22 * Math.sin(time * (1.2 + (i % 7) * 0.25) + starPhase[i]);
       // Fainter near the horizon, as through more atmosphere
       const alpha = clamp(1.15 - 0.13 * mag, 0.3, 1) * smooth(0, 0.18, u) * twinkle * dim;
       if (alpha <= 0.01) continue;
       const r = Math.max(0.6, 2.3 - 0.34 * mag);
-      const x = stars.x[i];
-      const y = stars.y[i];
       ctx.globalAlpha = alpha;
       if (mag < 2.2) {
         const g = r * 8;
@@ -207,16 +313,103 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     ctx.globalAlpha = 1;
   }
 
+  // Below the horizon is ground, in the color of the skyline's far hills
+  function drawGround() {
+    // Only when the horizon straight ahead is actually on screen
+    const ahead = projectVector(Math.sin(shot.az * RAD), Math.cos(shot.az * RAD), 0, view);
+    if (!ahead.k || ahead.y > h + 40) return;
+    // The horizon in front of the camera, in azimuth order, is one continuous arc left to right
+    const pts: { x: number; y: number }[] = [];
+    for (let a = -88; a <= 88; a += 2) {
+      const az = (shot.az + a) * RAD;
+      const e = Math.sin(az);
+      const n = Math.cos(az);
+      if (e * view.fwd[0] + n * view.fwd[1] <= 0) continue;
+      const p = projectVector(e, n, 0, view);
+      if (p.k) pts.push(p);
+    }
+    if (pts.length < 2) return;
+    ctx.fillStyle = GROUND;
+    ctx.beginPath();
+    ctx.moveTo(Math.min(pts[0].x, 0) - 10, pts[0].y);
+    for (const p of pts) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(Math.max(pts[pts.length - 1].x, w) + 10, pts[pts.length - 1].y);
+    ctx.lineTo(Math.max(pts[pts.length - 1].x, w) + 10, h + 10);
+    ctx.lineTo(Math.min(pts[0].x, 0) - 10, h + 10);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  const onScreen = (x: number, y: number, u: number) => u > 0.02 && x > 0 && x < w && y > 0 && y < h;
+
+  // Name what the camera is looking at, for the caption on the page: the section's featured
+  // object when it is in view, otherwise the named star or planet nearest the center
+  function describeView(p: number) {
+    let kind: 'star' | 'planet' | 'none' = 'none';
+    let index = -1;
+    let best = (0.3 * Math.min(w, h)) ** 2;
+    const brightestPlanet = planetsNow
+      .map((pl, i) => ({ ...pl, i }))
+      .filter((pl) => onScreen(pl.x, pl.y, pl.u))
+      .sort((a, b) => a.mag - b.mag)[0];
+    if (section === 'education' && POLARIS >= 0 && onScreen(named.x[POLARIS], named.y[POLARIS], named.u[POLARIS])) {
+      kind = 'star';
+      index = POLARIS;
+      best = -1;
+    } else if (section === 'projects' && brightestPlanet) {
+      kind = 'planet';
+      index = brightestPlanet.i;
+      best = -1;
+    }
+    for (let i = 0; i < named.length; i++) {
+      if (named.u[i] < 0.08) continue;
+      const d = (named.x[i] - view.cx) ** 2 + (named.y[i] - view.cy) ** 2;
+      if (d < best) {
+        best = d;
+        kind = 'star';
+        index = i;
+      }
+    }
+    planetsNow.forEach((pl, i) => {
+      if (pl.u < 0.08) return;
+      // Planets win ties generously: they are the rarer sight
+      const d = ((pl.x - view.cx) ** 2 + (pl.y - view.cy) ** 2) * 0.5;
+      if (d < best) {
+        best = d;
+        kind = 'planet';
+        index = i;
+      }
+    });
+    const direction: Direction = shot.alt > 72 ? 'overhead' : WINDS[Math.round((((shot.az % 360) + 360) % 360) / 45) % 8];
+    const event = { type: 'view' as const, kind, index, direction, dawn: p > 0.96 };
+    const key = JSON.stringify(event);
+    if (key !== lastViewEvent) {
+      lastViewEvent = key;
+      emit(event);
+    }
+  }
+
   function render(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
     if (Date.now() - refreshedAt > MINUTE) refresh();
-    // Ease the scroll position so the dome glides and dimming never jumps
+    // Ease the scroll position so the dome and the camera glide and dimming never jumps
     progress += (target - progress) * (1 - Math.exp(-dt * 4.5));
     const p = calm ? 0 : progress;
-    const turn = reduced || calm ? 0 : p;
-    const nextLst = siderealTime(moment.time + turn * DOME_SPAN);
-    if (Number.isNaN(lst) || Math.abs(nextLst - lst) > 1e-5) reproject(nextLst);
+    const still = reduced || calm;
+
+    shot = shotAt(p);
+    // Opening moment: the gaze lifts from the southern sky to straight overhead
+    if (!still) shot = { ...shot, alt: shot.alt - 24 * (1 - smooth(0, 2.6, (now - startedAt) / 1000)) * (1 - smooth(0, 0.05, p)) };
+    const nextLst = siderealTime(moment.time + (still ? 0 : p) * DOME_SPAN);
+    const key = `${nextLst.toFixed(6)}|${shot.az.toFixed(3)}|${shot.alt.toFixed(3)}|${shot.fov.toFixed(3)}|${shot.lens.toFixed(3)}|${w}|${h}`;
+    if (key !== viewKey) {
+      viewKey = key;
+      lst = nextLst;
+      view = camera(w, h, shot.az, shot.alt, shot.fov, shot.lens);
+      reproject();
+    }
+
     // Full sky behind the hero, calmer behind reading sections, fading into the footer dawn
     const dim = calm ? 0.5 : (1 - 0.3 * smooth(0.04, 0.14, p)) * (1 - 0.65 * smooth(0.82, 1, p));
 
@@ -228,8 +421,9 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
     sky.addColorStop(1, air.low);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
-    // The dome: a soft glow toward the horizon at the screen's edges, as on a real night
-    const rim = ctx.createRadialGradient(view.cx, view.cy, view.R * 0.45, view.cx, view.cy, view.R);
+    // The dome: a soft glow toward the edges of the view, as toward a real horizon
+    const edge = Math.hypot(w, h) / 2;
+    const rim = ctx.createRadialGradient(view.cx, view.cy, edge * 0.45, view.cx, view.cy, edge);
     rim.addColorStop(0, 'rgba(70,82,150,0)');
     rim.addColorStop(1, `rgba(70,82,150,${calm ? 0.1 : 0.22})`);
     ctx.fillStyle = rim;
@@ -250,25 +444,30 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
       ctx.stroke();
     }
 
-    if (reduced) return;
-    const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
-    const shower = moment.shower >= 0 ? 1.5 : 1;
-    // Rare at the top, building gently toward the end of the page, over Amman
-    const rate = calm ? 0.08 * area : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower;
-    // Heads must end above the skyline, which rises into view at the end of the page
-    floor = 0.9 - 0.3 * smooth(0.8, 1, p);
-    spawnDebt += dt * rate;
-    while (spawnDebt >= 1) {
-      meteors.spawn(w, h, false, floor);
-      spawnDebt -= 1;
+    if (!reduced) {
+      const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
+      const shower = moment.shower >= 0 ? 1.5 : 1;
+      const end = smooth(0.8, 1, p);
+      // Rare at the top, building gently toward the end of the page, over Amman
+      const rate = calm ? 0.08 * area : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower;
+      // Above the skyline as it rises into view; at the end, about half fall behind the city
+      floor = 0.9 - 0.3 * end;
+      spawnDebt += dt * rate;
+      while (spawnDebt >= 1) {
+        meteors.spawn(w, h, false, floor, 0.5 * end);
+        spawnDebt -= 1;
+      }
+      nextBolide -= dt;
+      if (nextBolide <= 0 && !calm) {
+        meteors.spawn(w, h, true, floor, 0.5 * end);
+        nextBolide = p > 0.7 ? rand(7, 12) : rand(12, 20);
+      }
+      meteors.update(dt);
+      meteors.draw(ctx, calm ? 0.6 : 1);
     }
-    nextBolide -= dt;
-    if (nextBolide <= 0 && !calm) {
-      meteors.spawn(w, h, true, floor);
-      nextBolide = p > 0.7 ? rand(7, 12) : rand(12, 20);
-    }
-    meteors.update(dt);
-    meteors.draw(ctx, calm ? 0.6 : 1);
+
+    if (shot.alt < 89) drawGround();
+    if (!calm) describeView(p);
   }
 
   function loop(now: number) {
@@ -319,21 +518,28 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
         case 'init':
           reduced = msg.reducedMotion;
           calm = !!msg.calm;
+          startedAt = performance.now();
         // falls through
         case 'resize':
           w = msg.width;
           h = msg.height;
           dpr = msg.dpr;
-          // The horizon circle passes through the corners of the viewport
-          view = { cx: w / 2, cy: h / 2, R: Math.hypot(w, h) / 2 };
           canvas.width = Math.round(w * dpr);
           canvas.height = Math.round(h * dpr);
           milky.width = Math.max(1, Math.round(w / 2));
           milky.height = Math.max(1, Math.round(h / 2));
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          resolved = {};
           refresh();
           started = true;
           break;
+        case 'scenes':
+          anchors = msg.anchors;
+          horizonY = msg.horizonY;
+          resolved = {};
+          viewKey = '';
+          if (reduced || !visible) render(performance.now());
+          return;
         case 'scroll':
           target = clamp(msg.progress);
           if (reduced || !visible) {
@@ -343,7 +549,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
           return;
         case 'motion':
           reduced = msg.reduced;
-          lst = NaN;
+          viewKey = '';
           break;
         case 'visible':
           visible = msg.visible;

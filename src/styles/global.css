@@ -208,6 +208,35 @@ section h2 {
   color: var(--haze);
 }
 
+/* What the camera is looking at, as the page moves through the dome */
+.sky-view {
+  position: fixed;
+  inset-inline-end: var(--gutter);
+  bottom: 1.25rem;
+  z-index: 40;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(7, 11, 26, 0.62);
+  font-size: var(--tiny);
+  color: var(--haze);
+}
+
+.sky-view::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-inline-end: 0.5rem;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 8px var(--brass);
+  vertical-align: middle;
+}
+
+.sky-view[hidden] {
+  display: none;
+}
+
 /* ──────────────────────────────────────
    Header
    ────────────────────────────────────── */
@@ -795,6 +824,11 @@ section h2 {
    Contact: dawn over Amman
    ────────────────────────────────────── */
 .dawn {
+  /* The final scene owns the whole screen: with the footer, exactly one viewport */
+  min-height: calc(100svh - 4.75rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   padding-bottom: 0;
   background: linear-gradient(
     to bottom,
@@ -806,7 +840,8 @@ section h2 {
 }
 
 .contact {
-  padding-bottom: clamp(5rem, 12vw, 9rem);
+  margin-block: auto;
+  padding-bottom: clamp(3rem, 8vw, 6rem);
 }
 
 .contact p {
@@ -984,6 +1019,44 @@ section h2 {
   }
 }
 
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* Content curves along the dome: tilted and faint at the screen's edges, flat and solid in
+       the middle where it is read. The hero has its own entrance and is left out. */
+    main > section:not(#hero) :is(
+        h2,
+        .about-text p,
+        .facts > div,
+        .role,
+        .project,
+        .degree,
+        .certs > li,
+        .contact > *
+      ) {
+      animation-name: dome-curve;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: view();
+    }
+  }
+}
+
+@keyframes dome-curve {
+  0% {
+    transform: perspective(1200px) rotateX(-12deg) translateY(28px) scale(0.97);
+    opacity: 0.4;
+  }
+  25%,
+  75% {
+    transform: none;
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(1200px) rotateX(12deg) translateY(-28px) scale(0.97);
+    opacity: 0.4;
+  }
+}
+
 @keyframes header-in {
   from { opacity: 0; }
 }
@@ -1056,6 +1129,10 @@ section h2 {
   .facts div {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.1rem;
+  }
+
+  .sky-view {
+    display: none;
   }
 
   .sky-caption {

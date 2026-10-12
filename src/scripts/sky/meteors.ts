@@ -2,9 +2,10 @@
  * Shooting stars. All of them travel the same path direction (down-left at 45°) and are spread
  * evenly across the whole width.
  *
- * Every meteor ends its life on screen: its final head position is chosen inside the view (above
- * the footer skyline), and the start is worked back from there. So a trail never shows without
- * its head, whether at the screen edge or behind the skyline.
+ * Every meteor ends its life on screen: its final head position is chosen inside the view and the
+ * start is worked back from there, so a trail never hangs in open sky without its head. At the
+ * end of the page some are allowed to end below the skyline's edge, so they fall behind the city
+ * and disappear there, the one place a head may vanish.
  *
  * Look: a tapered trail with a soft glow around it that grows as the meteor enters, a two-tone
  * color from real meteor emission (magnesium green, sodium orange, blue-white, plus violet and
@@ -96,15 +97,16 @@ export function createMeteors(makeCanvas: (w: number, h: number) => Canvas) {
 
     /**
      * Spawn one shooting star in a w×h view; a fireball is bigger, brighter and longer.
-     * `floor` is the lowest point (fraction of h) a head may end at, to stay above the skyline.
+     * `floor` is the lowest point (fraction of h) a head ends at in open sky; with probability
+     * `behind`, it instead ends below that line, behind the city skyline.
      */
-    spawn(w: number, h: number, fireball = false, floor = 0.9) {
+    spawn(w: number, h: number, fireball = false, floor = 0.9, behind = 0) {
       const size = fireball ? rand(1.5, 1.9) : rand(0.6, 1.15);
       const speed = rand(170, 330) * (0.8 + size * 0.3);
       const life = fireball ? rand(3.2, 4) : rand(1.8, 3.2);
       // Choose where the head ends, evenly over the view, then work back to where it starts
       const endX = rand(0.04, 0.96) * w;
-      const endY = rand(0.08, floor) * h;
+      const endY = (Math.random() < behind ? rand(floor + 0.04, 1) : rand(0.08, floor)) * h;
       const travel = speed * life;
       const flare = fireball || Math.random() < 0.22 ? rand(0.5, 1.1) : 0;
       add(endX - DX * travel, endY - DY * travel, speed, life, size, fireball ? 0 : pickStyle(), flare);
