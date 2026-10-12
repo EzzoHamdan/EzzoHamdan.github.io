@@ -4,7 +4,7 @@
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
 > **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 change recipes →
 > §4 failure messages → §5 sharp edges → §6 decisions.
-> **Reflects code as of 2026-10-12** (`astro-rebuild` branch).
+> **Reflects code as of 2026-10-12** (`sky-over-amman` branch: the "sky over Amman" design).
 
 **What must not break:**
 
@@ -26,8 +26,9 @@
 
 **Limits:**
 
-- **JavaScript:** about 3 KB gzipped on first load, plus a 1.6 KB worker for the sky. Everything
-  else is HTML and CSS.
+- **JavaScript:** about 4 KB gzipped on first load. The sky worker, including the 1,627-star
+  catalog, is about 20 KB gzipped and loads after the page has painted. Everything else is HTML
+  and CSS.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
 - **Hosting:** GitHub Pages serves static files only; there is no server code anywhere.
 
@@ -77,7 +78,11 @@ nothing deploys from a feature branch.
 | `llms.txt` / `llms-full.txt` text | [`src/lib/llms.ts`](src/lib/llms.ts) |
 | Profile page (used by both languages) | [`src/components/ProfilePage.astro`](src/components/ProfilePage.astro) |
 | `<head>`: meta, Open Graph, hreflang, fonts | [`src/layouts/Base.astro`](src/layouts/Base.astro) |
-| Shooting-star sky (worker + fallback) | [`src/scripts/sky-renderer.ts`](src/scripts/sky-renderer.ts), [`src/components/Sky.astro`](src/components/Sky.astro) |
+| Sky renderer: stars, constellations, shooting stars (worker + fallback) | [`src/scripts/sky-renderer.ts`](src/scripts/sky-renderer.ts), [`src/components/Sky.astro`](src/components/Sky.astro) |
+| Amman location, sidereal time, "tonight" logic, shower dates | [`src/scripts/sky-time.ts`](src/scripts/sky-time.ts) |
+| Arabic star names and meteor showers | [`src/data/star-names.ts`](src/data/star-names.ts) |
+| Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
+| Amman skyline at the footer dawn | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
 | Blog schema and routes | [`src/content.config.ts`](src/content.config.ts), [`src/pages/blog/`](src/pages/blog/) |
 | Post-build checks | [`scripts/check-dist.mjs`](scripts/check-dist.mjs) |
@@ -104,8 +109,13 @@ full-width card.
    the first published post.
 
 **Change the sky:** edit `src/scripts/sky-renderer.ts`. Check reduced motion (macOS: System
-Settings → Accessibility → Display → Reduce motion): the sky must turn static, with no shooting
-stars.
+Settings → Accessibility → Display → Reduce motion): the sky must turn still, with no shooting
+stars and no twinkle.
+
+**Add a named star:** add `{ en, origin, ar }` to `starNames` in `src/data/star-names.ts`, where
+`en` is the catalog's proper name. Regenerate the catalog with the commands at the top of
+`scripts/make-sky-catalog.mjs`. The script exits with `named star not found in catalog: <name>`
+if the spelling differs (it's "Shedar", not "Schedar").
 
 ## 4. Failure messages from `npm run check`
 
@@ -132,6 +142,15 @@ stars.
   deliberate for a personal site.
 - **The sky runs in a Web Worker** via `OffscreenCanvas`. Browsers without it fall back to the same
   renderer on the main thread, which is why `sky-renderer.ts` is imported in two places.
+- ⚠ **`src/data/sky.json` is generated.** Hand edits are lost the next time
+  `scripts/make-sky-catalog.mjs` runs. It is BSD-3-Clause data (see Credits).
+- **Jordan has no daylight saving time** (UTC+3 all year since 2022), so `sky-time.ts` uses a
+  fixed offset. If that ever changes, the "right now" caption and the 22:00 "tonight" sky
+  drift by an hour.
+- **Unlike what you'd expect, east is on the left** of the sky. The projection shows the sky as you
+  see it lying on your back with north at the top, the way an astrolabe plate does.
+- **Star labels only appear over empty sky** (`Sky.astro`, the `content` selector), so hovering
+  text never pops a label in the middle of reading.
 
 ## 6. Decisions
 
@@ -148,5 +167,17 @@ stars.
 - **Root user site.** The repo was renamed from `portfolio` to `EzzoHamdan.github.io`, because
   `robots.txt`, the sitemap and `llms.txt` only work at the domain root. A custom domain is
   `[planned]` and needs no code change beyond `site.url` and a `public/CNAME` file.
-- **"Sky over Amman" redesign:** `[planned]`, being tried on a separate branch. If it doesn't work
-  out, this neon design stays.
+- **"Sky over Amman" redesign:** this branch. The neon design is preserved on `astro-rebuild` as
+  the fallback.
+- **The sky is real, not decorative noise:** positions come from sidereal time at Amman, so a
+  visitor at 21:00 sees roughly what is overhead in Amman at 21:00. Verified on 2026-10-12 at
+  20:19: Polaris at 32.1° altitude (equal to Amman's latitude) and Vega at 58° in the WNW.
+- **No AI-generated video or imagery.** The sky is procedural and the skyline is generated at
+  build time; both are lighter than a video and specific to Amman.
+
+## Credits
+
+Star positions, constellation lines and star names come from
+[d3-celestial](https://github.com/ofrohn/d3-celestial) (© 2015 Olaf Frohn, BSD-3-Clause), which
+is built on Hipparcos and Yale Bright Star Catalog data. Brand icons are from
+[Simple Icons](https://simpleicons.org/) (CC0).
