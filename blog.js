@@ -104,6 +104,13 @@
     const slug = getQueryParam('article');
     if (!slug) return; // Not on an article page
 
+    // The slug becomes a script URL, so only allow folder-style names
+    // (blocks ?article=https://other.site/x from loading foreign scripts)
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      bodyEl.innerHTML = '<p style="color: #ff6b6b;">Article not found.</p>';
+      return;
+    }
+
     // Dynamically load the data.js for this article
     // Path is relative to the current page (blogs/blog.html), so just [slug]/data.js
     const script = document.createElement('script');
