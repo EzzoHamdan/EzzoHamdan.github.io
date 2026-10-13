@@ -320,10 +320,10 @@ const glass = (x: number, top: number, w: number, base = 330) => {
   rect('rgba(175, 220, 235, 0.16)', x + w * 0.22, top, w * 0.15, base - top);
   rect('rgba(255, 214, 160, 0.75)', x, top, 1.6, base - top);
 };
-// Jordan Gate, behind the mosque
-glass(612, 150, 30);
-glass(648, 172, 22);
-L.beacons.push({ x: 627, y: 147 });
+// Jordan Gate, in the space between the mosque and the white tower
+glass(734, 150, 30);
+glass(770, 172, 22);
+L.beacons.push({ x: 749, y: 147 });
 // The round-topped cylinder rising behind the white residential tower
 glass(905, 118, 56);
 dome('url(#amman-cylinder-cap)', 933, 118, 28, 15);
@@ -426,12 +426,13 @@ cypress(mosque - 108, 306, 70);
 cypress(mosque + 112, 306, 62);
 // The church: a bell tower with a red-tiled cap and a cross
 const church = 408;
-rect('#efdbb6', church - 10, 220, 20, 90);
-rect('#c3a690', church + 5, 222, 5, 88);
-arch('#7d6c74', church - 5, 246, 9, 16);
-dome('#b5553f', church, 220, 12, 10);
-line('#4a3b3c', 1.3, [[church, 210], [church, 196]]);
-line('#4a3b3c', 1.3, [[church - 4, 201], [church + 4, 201]]);
+// Tall enough that the cross stands against the sky, above the far hills
+rect('#efdbb6', church - 10, 182, 20, 128);
+rect('#c3a690', church + 5, 184, 5, 126);
+arch('#7d6c74', church - 5, 208, 9, 16);
+dome('#b5553f', church, 182, 12, 10);
+line('#4a3b3c', 1.3, [[church, 172], [church, 156]]);
+line('#4a3b3c', 1.3, [[church - 4.5, 162], [church + 4.5, 162]]);
 
 // ── The middle hills, stacked with stone houses ──
 layer();
