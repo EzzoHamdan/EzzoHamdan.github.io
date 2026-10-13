@@ -95,7 +95,7 @@ nothing deploys from a feature branch.
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
-| Amman at dawn (landmarks, Abu Darwish Mosque, green-lit minarets, beacons, pigeons, mist, the flag, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
+| Amman at first light (Temple of Hercules, King Abdullah I Mosque, the Abdali towers, the Roman Theatre, stone houses, the flag, minarets, beacons, pigeons, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
 | Blog schema and routes | [`src/content.config.ts`](src/content.config.ts), [`src/pages/blog/`](src/pages/blog/) |
 | Post-build checks | [`scripts/check-dist.mjs`](scripts/check-dist.mjs) |
@@ -394,8 +394,15 @@ if the spelling differs (it's "Shedar", not "Schedar").
   fraction of the element's height; and an earlier version solved the horizon only for the very
   bottom of the page, which left a visible band above the city everywhere else. If `.skyline` is
   renamed, the shot falls back to 75% of the screen height.
-- **The skyline keeps its 4:1 proportions** (`aspect-ratio`, capped at 42vh) so wide screens
-  don't crop the tops of the towers and the flag. Keep landmark tops below viewBox y ≈ 30.
+- **The skyline keeps its own proportions** (`aspect-ratio: 1440 / 420`, capped at 48vh) so wide
+  screens don't crop the tallest tower, the columns or the flag. Keep landmark tops below viewBox
+  y ≈ 70.
+- ⚠ **Ugly on purpose: the skyline is merged by color, layer by layer** (`Skyline.astro`, `layer`,
+  `add`). Every shape of one fill in a layer goes into a single path, so hundreds of houses cost a
+  few dozen elements; window grids are SVG patterns filled into one rectangle per house. The
+  price: inside a layer there is no per-shape paint order, so shapes that must overlap belong in
+  separate layers (each row of houses is its own layer, back to front). Drawing each house as its
+  own group made the inline SVG about 185 KB; this way it is about 90 KB (26 KB gzipped).
 - ⚠ **Planet positions are valid from 1800 to 2050.** They use Standish's approximate Keplerian
   elements (table 1, `astro.ts::ELEMENTS`). After 2050, switch to table 2 (valid 3000 BC to
   3000 AD), which adds correction terms for Jupiter and Saturn.
@@ -480,6 +487,9 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Farthest galaxy first** (2026-10-12, owner's request): the first order (Andromeda outward to
   the Sombrero) read as flying away from home. Distances from McQuinn et al. 2016 for the Sombrero
   (31 million light-years) and the Whirlpool (28 million).
+- **Amman lit, not in silhouette** (2026-10-13, owner's request with photographs): the dark
+  skyline read as "wacky". The city is now limestone lit gold by the first sun from the east,
+  with its real landmarks drawn from the photos, under a sky that still holds the night.
 - **Content beside the route, not in the middle** (2026-10-12, owner's request): stops used to
   slide each plane to the center and peel it off; now their parts are fixed in space on the
   sides and pass out of view naturally, which reads as travel rather than as cards being shown.
