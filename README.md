@@ -404,11 +404,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
   (each row of houses is its own layer, back to front), and walls and hills go in a wall pass
   (`rect(…, true)`, `hill`) that paints before every detail; without it, a wall tone first used
   after some windows painted over them and left blank houses. Drawing each house as its own group
-  made the inline SVG about 185 KB; this way it is about 130 KB (32 KB gzipped) with full detail.
+  made the inline SVG about 185 KB; this way it is about 150 KB (39 KB gzipped) with full detail and the trees.
 - **Trees grow behind the houses, from their own random sequence** (`Skyline.astro::grove`, `R`).
   Each grove is its own layer, drawn just before the row of houses in front of it, so the houses
   hide the trunks and the crowns show over the roofs. The trees' random numbers are separate from
-  the houses' (`rand`), so adding, moving or removing a tree never reshuffles the city.
+  the houses' (`rand`), so adding, moving or removing a tree never reshuffles the city. Crowns are ellipses drawn as two
+  arcs (`blob`), the shortest shape path data allows; the trees cost about 7 KB gzipped.
 - ⚠ **Planet positions are valid from 1800 to 2050.** They use Standish's approximate Keplerian
   elements (table 1, `astro.ts::ELEMENTS`). After 2050, switch to table 2 (valid 3000 BC to
   3000 AD), which adds correction terms for Jupiter and Saturn.
