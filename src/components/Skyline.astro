@@ -1,260 +1,544 @@
 ---
-// Amman at dawn, back to front: hazy far ranges with a rim of first light; a mist band; the
-// modern city on the middle hills (the Abdali towers, the Jordan Gate twin towers, King Abdullah I
-// Mosque with its blue dome, Abu Darwish Mosque in its black-and-white stripes, and the Raghadan
-// flagpole flying the Jordanian flag), its ridge and tower tops catching the first light; Citadel
-// hill with the Temple of Hercules columns and the Umayyad Palace dome; and the nearest hills
-// covered in stone houses with water tanks on their roofs and window lights that go out as dawn
-// comes. Across the hills, minarets lit green, as Amman's are through the night; red beacons on
-// the tallest towers; and a flock of rooftop pigeons circling, as Amman's pigeon keepers fly them.
+// Amman at first light, the last scene of the page: the low sun from the east (the left) lights
+// the limestone city warm and gold while the sky above still holds the night. Back to front:
+// hazy far hills blanketed in small houses, with a rim of light on their crest; the Abdali towers
+// in glass and stone, among them the round-topped cylinder; King Abdullah I Mosque with its
+// turquoise dome and two balconied minarets, a church bell tower beside it; Citadel hill with
+// the Temple of Hercules (two columns still carrying their beam, a third alone, a broken stump);
+// the middle hills stacked with stone houses; the Roman Theatre's tiers carved into the hill in
+// the foreground; the nearest houses with water tanks and blue window frames; cypresses; the
+// Raghadan flagpole; minarets lit green; red beacons on the tallest towers; rooftop pigeons.
 //
-// Generated deterministically at build time. The sky's horizon sits at HORIZON_Y in this
-// viewBox, just under the far ranges' lowest crest, so the canvas ground is always tucked behind
-// them. Sky.astro reads it from data-horizon and maps it to the screen.
+// Generated deterministically at build time. Shapes are merged by color into one path each, layer
+// by layer, so the whole city is a few dozen elements however many houses it has. The sky's
+// horizon sits at HORIZON_Y in this viewBox, at the far hills' lowest crest, so the canvas ground
+// is always tucked behind them; Sky.astro and journey.ts read it from data-horizon.
 const W = 1440;
-const H = 360;
-const HORIZON_Y = 180;
+const H = 420;
 
-let seed = 31;
+let seed = 23;
 const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-const r1 = (n: number) => n.toFixed(1);
-
-const far = (x: number) => 156 - 10 * Math.sin(x / 260 + 0.6) - 6 * Math.sin(x / 97 + 2.1);
-const mid = (x: number) => 222 - 12 * Math.sin(x / 210 + 1.1) - 6 * Math.sin(x / 71);
-// Citadel hill (Jabal al-Qal'a): a flat-topped plateau with steep sides around x = 300, sinking
-// behind the nearest hills on both sides
-const plateau = (x: number) => {
-  const t = Math.min(1, Math.max(0, (Math.abs(x - 300) - 110) / 80));
+const between = (a: number, b: number) => a + rand() * (b - a);
+const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
+const r1 = (n: number) => Math.round(n * 10) / 10;
+// Coordinates are written with one decimal near the viewer and whole numbers in the distance,
+// where half a unit is invisible; it keeps the markup small
+let decimals = 10;
+const f = (n: number) => Math.round(n * decimals) / decimals;
+const bump = (x: number, center: number, flat: number, fall: number) => {
+  const t = Math.min(1, Math.max(0, (Math.abs(x - center) - flat) / fall));
   return 1 - t * t * (3 - 2 * t);
 };
-const citadel = (x: number) => 306 - 102 * plateau(x) - 2 * Math.sin(x / 23);
-const front = (x: number) => 292 - 10 * Math.sin(x / 170 + 2) - 5 * Math.sin(x / 61);
 
-const ridge = (f: (x: number) => number, x0 = 0, x1 = W) => {
-  let d = `M${x0} ${H} L${x0} ${r1(f(x0))}`;
-  for (let x = x0 + 12; x <= x1; x += 12) d += ` L${x} ${r1(f(x))}`;
-  return `${d} L${x1} ${H} Z`;
-};
-const crest = (f: (x: number) => number) => {
-  let d = `M0 ${r1(f(0))}`;
-  for (let x = 12; x <= W; x += 12) d += ` L${x} ${r1(f(x))}`;
-  return d;
+// Colors: sunlit limestone in a few tones, lavender shadow, and the pink-lavender dawn air that
+// distance mixes into everything
+const STONES = ['#e6c99f', '#dcbd92', '#ecd5b2', '#e0c0a4', '#d4b48a'];
+const SIDE = '#a99195';
+const ROOF = '#f8ead0';
+const WINDOW = '#5b566d';
+const FRAME = '#5f86ad';
+const HAZE = [190, 160, 178];
+const tone = (hex: string, haze: number) => {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgb(${c.map((v, i) => Math.round(v + (HAZE[i] - v) * haze)).join(',')})`;
 };
 
-interface House { x: number; y: number; w: number; h: number; tank?: { x: number; y: number }; light?: { x: number; y: number; out: number } }
-function houses(f: (x: number) => number, minH: number, maxH: number, gap: number, lit: number, skip?: (x: number) => boolean) {
-  const out: House[] = [];
-  for (let x = 0; x < W; ) {
-    const w = 10 + rand() * 20;
+// Terrain, in viewBox units (y grows downward)
+const far = (x: number) => 214 - 13 * Math.sin(x / 250 + 0.5) - 6 * Math.sin(x / 88 + 2) - 3 * Math.sin(x / 33);
+const citadel = (x: number) => 302 - 66 * bump(x, 210, 112, 66) - 1.5 * Math.sin(x / 17);
+const middle = (x: number) => 292 - 8 * Math.sin(x / 160 + 1.2) - 4 * Math.sin(x / 47);
+const jofeh = (x: number) => 306 - 32 * bump(x, 300, 120, 170) - 2 * Math.sin(x / 29);
+const near = (x: number) => 352 - 6 * Math.sin(x / 120 + 0.4) - 3 * Math.sin(x / 37);
+const HORIZON_Y = Math.ceil(Math.max(...Array.from({ length: W + 1 }, (_, x) => far(x)))) + 1;
+
+// Layers, painted in order. Within a layer, shapes of one fill share a path
+interface Light { x: number; y: number; w: number; h: number; out: number }
+interface Layer {
+  paths: Map<string, string[]>;
+  strokes: { d: string; stroke: string; width: number }[];
+  lights: Light[];
+  greens: { x: number; y: number; r: number }[];
+  beacons: { x: number; y: number }[];
+}
+const layers: Layer[] = [];
+let L!: Layer;
+const layer = () => {
+  L = { paths: new Map(), strokes: [], lights: [], greens: [], beacons: [] };
+  layers.push(L);
+};
+const add = (fill: string, d: string) => {
+  const list = L.paths.get(fill) ?? [];
+  list.push(d);
+  L.paths.set(fill, list);
+};
+// Subpaths are left open: a fill closes each one by itself
+const rect = (fill: string, x: number, y: number, w: number, h: number) => add(fill, `M${f(x)} ${f(y)}h${f(w)}v${f(h)}h${f(-w)}`);
+const poly = (fill: string, pts: number[][]) => add(fill, `M${pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}`);
+const line = (stroke: string, width: number, pts: number[][]) =>
+  L.strokes.push({ d: `M${pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}`, stroke, width });
+const sample = (fn: (x: number) => number, x0: number, x1: number, step = 8) => {
+  const pts: number[][] = [];
+  for (let x = x0; x < x1; x += step) pts.push([x, fn(x)]);
+  pts.push([x1, fn(x1)]);
+  return pts;
+};
+const hill = (fill: string, fn: (x: number) => number, x0 = 0, x1 = W) => poly(fill, [[x0, H], ...sample(fn, x0, x1), [x1, H]]);
+/** The upper half of an ellipse, left to right. */
+const arc = (cx: number, cy: number, rx: number, ry: number, n = 22) =>
+  Array.from({ length: n + 1 }, (_, i) => {
+    const a = Math.PI - (i / n) * Math.PI;
+    return [cx + rx * Math.cos(a), cy - ry * Math.sin(a)];
+  });
+const dome = (fill: string, cx: number, cy: number, rx: number, ry: number) => poly(fill, arc(cx, cy, rx, ry));
+
+interface HouseStyle {
+  /** For the window pattern's id. */
+  name: string;
+  /** Size of details (windows, tanks) relative to the nearest houses. */
+  scale: number;
+  /** How much dawn air lies between the house and the viewer, 0..1. */
+  haze: number;
+  windows: boolean;
+  lit: number;
+  maxCols: number;
+  maxRows: number;
+}
+/** A stone house: sunlit front, shadowed east side, bright roof edge, windows, a tank or two. */
+function house(x: number, base: number, w: number, h: number, s: HouseStyle) {
+  const front = tone(pick(STONES), s.haze);
+  const sideW = Math.max(1.2, w * 0.15);
+  const top = base - h;
+  // Walls run on down the slope behind the next row, so no gaps show between rows; far away a
+  // short run is enough (a long one reads as stripes)
+  const run = h + 34 * s.scale ** 2;
+  rect(front, x, top, w - sideW, run);
+  rect(tone(SIDE, s.haze), x + w - sideW, top + 0.8 * s.scale, sideW, run);
+  if (s.scale < 0.4) return;
+  rect(tone(ROOF, s.haze), x, top, w - sideW, 1.3 * s.scale);
+  // A stair room on some roofs
+  if (rand() < 0.3 && w > 12 * s.scale) {
+    const rw = w * between(0.2, 0.34);
+    const rh = between(4, 7) * s.scale;
+    const rx = x + between(0.08, 0.5) * w;
+    rect(front, rx, top - rh, rw, rh);
+    rect(tone(ROOF, s.haze), rx, top - rh, rw, 1.1 * s.scale);
+  }
+  // Water tanks, the most Amman detail there is
+  if (rand() < 0.55 && s.scale > 0.35) {
+    const n = rand() < 0.4 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const tw = 4.5 * s.scale;
+      const tx = x + 2 + rand() * Math.max(1, w - sideW - tw - 4);
+      rect(tone(rand() < 0.5 ? '#2c2b34' : '#eeedf0', s.haze), tx, top - 3.2 * s.scale, tw, 3.2 * s.scale);
+    }
+  }
+  if (!s.windows) return;
+  // The windows are one rectangle filled with the style's window pattern, its grid snapped to the
+  // pattern's, so a house of twenty windows is still one shape
+  const { stepX, stepY, ww, wh } = windowGrid(s);
+  const face = w - sideW - 4 * s.scale;
+  const cols = Math.min(s.maxCols, Math.floor((face - ww) / stepX) + 1);
+  const rows = Math.min(s.maxRows, Math.floor((h - 7 * s.scale - wh) / stepY) + 1);
+  if (cols < 1 || rows < 1) return;
+  // Centered on the face, as near as the shared grid allows
+  const x0 = Math.round((x + 2 * s.scale + (face - (cols - 1) * stepX - ww) / 2) / stepX) * stepX;
+  const y0 = Math.ceil((top + 4 * s.scale) / stepY) * stepY;
+  const framed = rand() < 0.35;
+  rect(`url(#amman-win-${s.name}${framed ? '-framed' : ''})`, x0, y0, (cols - 1) * stepX + ww, (rows - 1) * stepY + wh);
+  // A few windows are still lit from the night, over their dark pane
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (rand() < s.lit) {
+        L.lights.push({ x: r1(x0 + c * stepX + ww * 0.2), y: r1(y0 + r * stepY + wh * 0.2), w: r1(ww * 0.6), h: r1(wh * 0.6), out: Math.round(rand() * 100) });
+      }
+    }
+  }
+}
+/** A window style's grid: one window per stepX by stepY cell, ww by wh, in the cell's corner. */
+function windowGrid(s: HouseStyle) {
+  return { stepX: r1(7 * s.scale), stepY: r1(8 * s.scale), ww: r1(3.2 * s.scale), wh: r1(3.8 * s.scale) };
+}
+/** A row of houses along a hill's crest, `sink` below it, skipping where landmarks stand. */
+function row(f: (x: number) => number, x0: number, x1: number, size: [number, number, number, number], sink: number, s: HouseStyle, skip?: (x: number) => boolean) {
+  const [minW, maxW, minH, maxH] = size;
+  for (let x = x0; x < x1; ) {
+    const w = between(minW, maxW);
     if (skip?.(x + w / 2)) {
       x += w;
       continue;
     }
-    const h = minH + rand() * (maxH - minH);
-    const base = f(x + w / 2) + 3;
-    const house: House = { x, y: base - h, w, h };
-    // Rooftop water tanks: the most Amman detail there is
-    if (rand() < 0.35) house.tank = { x: x + 2 + rand() * (w - 7), y: base - h - 3 };
-    if (rand() < lit) house.light = { x: x + 3 + rand() * (w - 7), y: base - h + 3 + rand() * (h - 8), out: Math.round(rand() * 100) };
-    out.push(house);
-    x += w + rand() * gap;
+    house(x, f(x + w / 2) + sink + between(0, 3) * s.scale, w, between(minH, maxH), s);
+    x += w + between(0, 3) * s.scale;
   }
-  return out;
+}
+/** A cypress: a dark flame, lit on its sunward side. */
+function cypress(x: number, base: number, h: number, haze = 0) {
+  const w = h * 0.16;
+  const pts = [[x, base - h], [x + w * 0.42, base - h * 0.62], [x + w * 0.5, base - h * 0.25], [x + w * 0.3, base], [x - w * 0.3, base], [x - w * 0.5, base - h * 0.25], [x - w * 0.42, base - h * 0.62]];
+  poly(tone('#2f4637', haze), pts);
+  poly(tone('#4d6a52', haze), [[x, base - h], [x - w * 0.42, base - h * 0.62], [x - w * 0.5, base - h * 0.25], [x - w * 0.3, base], [x - w * 0.05, base]]);
+}
+/** A small neighbourhood minaret with its green lantern. */
+function minaret(x: number, base: number, h: number, haze: number) {
+  rect(tone('#f0ddb9', haze), x - 2, base - h, 4, h);
+  rect(tone('#c4a68f', haze), x + 0.6, base - h, 1.4, h);
+  rect(tone('#e8d2ad', haze), x - 3.4, base - h * 0.7, 6.8, 2);
+  poly(tone('#d8c3a2', haze), [[x - 2.4, base - h], [x, base - h - 6], [x + 2.4, base - h]]);
+  L.greens.push({ x, y: r1(base - h - 7.5), r: 1.7 });
 }
 
-const mids = houses(
-  mid,
-  6,
-  16,
-  14,
-  0.18,
-  (x) => (x > 540 && x < 680) || (x > 820 && x < 910) || (x > 970 && x < 1130) || (x > 1158 && x < 1236),
-);
-const fronts = houses(front, 12, 30, 3, 0.3, (x) => x < 440 && x > 150);
-const citadelHouses = houses(citadel, 8, 18, 6, 0.2, (x) => citadel(x) > front(x) - 12 || (x > 238 && x < 392));
+const far1: HouseStyle = { name: 'far', scale: 0.32, haze: 0.62, windows: false, lit: 0, maxCols: 0, maxRows: 0 };
+const mid1: HouseStyle = { name: 'mid1', scale: 0.62, haze: 0.3, windows: true, lit: 0.06, maxCols: 3, maxRows: 2 };
+const mid2: HouseStyle = { name: 'mid2', scale: 0.72, haze: 0.2, windows: true, lit: 0.06, maxCols: 3, maxRows: 2 };
+const nearA: HouseStyle = { name: 'nearA', scale: 0.92, haze: 0.08, windows: true, lit: 0.08, maxCols: 5, maxRows: 4 };
+const nearB: HouseStyle = { name: 'nearB', scale: 1.08, haze: 0, windows: true, lit: 0.09, maxCols: 6, maxRows: 5 };
+const windowStyles = [mid1, mid2, nearA, nearB];
 
-// Modern towers on the middle hills
-const abdali = [
-  { x: 985, w: 34, h: 118 },
-  { x: 1024, w: 26, h: 150, slant: true },
-  { x: 1056, w: 38, h: 104 },
-  { x: 1098, w: 24, h: 128 },
-];
-const gate = [
-  { x: 836, w: 22, h: 168 },
-  { x: 872, w: 22, h: 152 },
-];
+// ── Far hills, blanketed in houses, with first light along the crest ──
+layer();
+decimals = 1;
+hill('url(#amman-far)', far);
+row(far, 0, W, [6, 12, 3, 6], 3, { ...far1, haze: 0.68 });
+row(far, 0, W, [6, 13, 3, 7], 11, { ...far1, haze: 0.58 });
+decimals = 10;
+line('rgba(255, 214, 160, 0.6)', 1.3, sample(far, 0, W));
+rect('url(#amman-mist)', 0, 226, W, 50);
 
-// King Abdullah I Mosque
-const mosqueX = 610;
-const mosqueBase = mid(mosqueX) - 2;
+// ── Abdali: towers in glass and stone ──
+layer();
+const glass = (x: number, top: number, w: number, base = 330) => {
+  rect('url(#amman-glass)', x, top, w, base - top);
+  rect('url(#amman-floors)', x, top, w, base - top);
+  rect('rgba(175, 220, 235, 0.16)', x + w * 0.22, top, w * 0.15, base - top);
+  rect('rgba(255, 214, 160, 0.75)', x, top, 1.6, base - top);
+};
+// Jordan Gate, behind the mosque
+glass(612, 150, 30);
+glass(648, 172, 22);
+L.beacons.push({ x: 627, y: 147 });
+// The round-topped cylinder rising behind the white residential tower
+glass(905, 118, 56);
+dome('url(#amman-cylinder-cap)', 933, 118, 28, 15);
+line('rgba(255, 214, 160, 0.7)', 1.2, arc(933, 118, 28, 15).slice(0, 15));
+L.beacons.push({ x: 933, y: 101 });
+rect('#eee6da', 858, 152, 70, 180);
+rect('#b8acb2', 928, 154, 12, 178);
+rect('#fbf3e6', 858, 152, 70, 1.4);
+rect('url(#amman-flats)', 862, 158, 63, 172);
+// The stone tower with dark glass ribbons
+rect('#d8b78a', 1014, 98, 62, 232);
+rect('#a2867f', 1076, 100, 11, 230);
+rect('#f2d6aa', 1014, 98, 62, 1.6);
+for (const gx of [1022, 1040, 1058]) rect('#3a5a6c', gx, 104, 9, 226);
+rect('url(#amman-stone-floors)', 1014, 104, 62, 226);
+add('#3b3a42', 'M1062 98v-14h1.4v14zM1052 86h30v1.2h-30z');
+// The tallest: dark glass over a broad podium
+glass(1182, 72, 64);
+rect('#2b495c', 1246, 74, 12, 256);
+L.beacons.push({ x: 1214, y: 69 });
+rect('#3c5f72', 1150, 238, 190, 92);
+rect('url(#amman-podium)', 1150, 240, 190, 90);
+rect('rgba(255, 214, 160, 0.7)', 1150, 238, 190, 1.4);
+rect('#efe2cf', 1292, 196, 34, 134);
+rect('#b7a8ae', 1326, 198, 7, 132);
+rect('url(#amman-offices)', 1296, 202, 27, 128);
 
-// Raghadan flagpole and a waving Jordanian flag (black, white and green, a red chevron and a white star)
-const poleX = 1300;
-const poleTop = mid(poleX) - 170;
-const flagW = 72;
+// ── The Raghadan flagpole ──
+const poleX = 1352;
+const poleTop = 82;
+const flagW = 64;
 const stripe = 15;
 const wave = (u: number) => 4 * Math.sin(u * Math.PI * 1.6);
 const band = (i: number) => {
   let d = '';
-  for (let k = 0; k <= 8; k++) {
-    const u = k / 8;
-    d += `${k ? 'L' : 'M'}${r1(poleX + u * flagW)} ${r1(poleTop + i * stripe + wave(u))} `;
-  }
-  for (let k = 8; k >= 0; k--) {
-    const u = k / 8;
-    d += `L${r1(poleX + u * flagW)} ${r1(poleTop + (i + 1) * stripe + wave(u))} `;
-  }
-  return d + 'Z';
+  for (let k = 0; k <= 8; k++) d += `${k ? 'L' : 'M'}${r1(poleX + (k / 8) * flagW)} ${r1(poleTop + i * stripe + wave(k / 8))}`;
+  for (let k = 8; k >= 0; k--) d += `L${r1(poleX + (k / 8) * flagW)} ${r1(poleTop + (i + 1) * stripe + wave(k / 8))}`;
+  return `${d}Z`;
 };
-const chevron = `M${poleX} ${r1(poleTop + wave(0))} L${r1(poleX + flagW * 0.48)} ${r1(poleTop + 1.5 * stripe + wave(0.48))} L${poleX} ${r1(poleTop + 3 * stripe + wave(0))} Z`;
+rect('#e4dfd9', poleX - 1.5, poleTop, 2, 280);
+rect('#9e9499', poleX + 0.5, poleTop, 1.2, 280);
+add('#17171b', band(0));
+add('#ece8e0', band(1));
+add('#1f7a43', band(2));
+add(
+  '#c3202f',
+  `M${poleX} ${r1(poleTop + wave(0))}L${r1(poleX + flagW * 0.48)} ${r1(poleTop + 1.5 * stripe + wave(0.48))}L${poleX} ${r1(poleTop + 3 * stripe + wave(0))}Z`,
+);
 
-// Abu Darwish Mosque on Jabal al-Ashrafieh: a striped hall and a square striped minaret
-const darwishX = 1172;
-const darwishBase = mid(darwishX + 30) + 1;
+// ── Citadel hill: the Temple of Hercules and the Umayyad dome ──
+layer();
+hill('url(#amman-earth)', citadel, 30, 400);
+for (let x = 92; x < 330; x += between(9, 15)) rect(pick(['#ddc29c', '#cdb08f', '#e4cca6']), x, citadel(x) - 1, between(8, 13), between(5, 9));
+const column = (x: number, top: number, w = 14, base = 228) => {
+  rect('#f1dcb5', x, top, w * 0.62, base - top);
+  rect('#c3a58b', x + w * 0.62, top, w * 0.38, base - top);
+  for (let y = top + 13; y < base; y += 14) rect('rgba(150, 120, 100, 0.35)', x, y, w, 0.7);
+  rect('rgba(160, 130, 110, 0.4)', x + w * 0.3, top, 0.6, base - top);
+};
+const capital = (x: number, y: number, w = 14) => {
+  poly('#ecd5ac', [[x - 1, y + 14], [x + w + 1, y + 14], [x + w + 5, y + 3], [x - 5, y + 3]]);
+  rect('#f4e2c1', x - 6, y, w + 12, 3.4);
+  poly('#bf9f86', [[x + w + 1, y + 14], [x + w + 5, y + 3], [x + w + 6, y + 3.4], [x + w + 2, y + 14]]);
+};
+rect('#e3caa3', 128, 226, 176, 10);
+rect('#f3e1c2', 128, 226, 176, 1.4);
+column(158, 118);
+column(196, 118);
+capital(158, 104);
+capital(196, 104);
+rect('#ecd6b0', 150, 88, 66, 16);
+rect('#c9ab90', 150, 100, 66, 4);
+rect('#f6e6c9', 146, 83, 74, 5);
+column(236, 142);
+capital(236, 128);
+poly('#e9d2aa', [[268, 228], [268, 200], [272, 196], [276, 199], [279, 194], [283, 198], [283, 228]]);
+rect('#c1a389', 278, 198, 5, 30);
+for (const [bx, bw] of [[112, 12], [300, 14], [318, 10], [126, 8]]) rect('#d7bc96', bx, 230 - bw * 0.5, bw, bw * 0.5);
+rect('#e2c9a2', 324, 218, 34, 18);
+rect('#bfa48b', 352, 218, 6, 18);
+dome('#e8d3ae', 341, 218, 14, 13);
 
-// Small minarets with green lights, on the middle hills and the nearest ones
-const greenMid = [140, 452, 742, 1404].map((x) => ({ x, base: mid(x) + 1, h: 34 + (x % 7) * 2 }));
-const greenFront = [96, 988, 1258].map((x) => ({ x, base: front(x) + 2, h: 52 + (x % 5) * 3 }));
+// ── King Abdullah I Mosque, a church bell tower beside it ──
+layer();
+const mosque = 560;
+const arch = (fill: string, x: number, base: number, w: number, h: number) =>
+  add(fill, `M${r1(x)} ${r1(base)}v${r1(-h + w / 2)}a${r1(w / 2)} ${r1(w / 2)} 0 0 1 ${r1(w)} 0v${r1(h - w / 2)}Z`);
+rect('#ecd8b3', mosque - 90, 270, 180, 40);
+rect('#f7e8cb', mosque - 90, 270, 180, 1.6);
+for (let i = 0; i < 9; i++) arch('#b9a08b', mosque - 82 + i * 19, 306, 9, 18);
+rect('#f0dfbe', mosque - 54, 236, 108, 36);
+rect('#cdb397', mosque + 38, 238, 16, 34);
+rect('#2f9fb1', mosque - 54, 236, 108, 7);
+for (let i = 0; i < 7; i++) arch('#8f7f86', mosque - 45 + i * 14, 266, 6, 14);
+dome('url(#amman-dome)', mosque, 238, 60, 54);
+rect('#1e8293', mosque - 60, 229, 120, 9);
+for (let x = mosque - 56; x < mosque + 56; x += 6) rect('#9fe1e6', x, 232, 2.4, 2.4);
+for (const k of [-0.62, -0.31, 0, 0.31, 0.62]) {
+  line('rgba(18, 96, 112, 0.42)', 0.8, Array.from({ length: 11 }, (_, i) => {
+    const t = i / 10;
+    const y = 229 - (229 - 184) * Math.sin((t * Math.PI) / 2);
+    return [mosque + k * 60 * Math.cos((t * Math.PI) / 2) * (1 - 0.08 * t), y];
+  }));
+}
+dome('url(#amman-dome)', mosque - 50, 272, 16, 14);
+dome('url(#amman-dome)', mosque + 50, 272, 16, 14);
+line('#e8c47a', 1.4, [[mosque, 184], [mosque, 172]]);
+add('#e8c47a', `M${mosque - 3.4} 168a4 4 0 1 0 6.8 0a3 3 0 1 1 -6.8 0Z`);
+for (const mx of [mosque - 88, mosque + 88]) {
+  rect('#f2e0be', mx - 5.5, 140, 7, 170);
+  rect('#c4a78f', mx + 1.5, 140, 4, 170);
+  for (const [by, bw] of [[205, 20], [162, 17]]) {
+    rect('#f6e7cb', mx - bw / 2, by, bw, 4.5);
+    rect('#a99195', mx - bw / 2 + 1, by + 4.5, bw - 2, 2);
+  }
+  rect('#efdcb9', mx - 4, 128, 6, 34);
+  rect('#c4a78f', mx + 2, 128, 2, 34);
+  dome('#e9d5b0', mx, 128, 5, 7);
+  line('#e8c47a', 1, [[mx, 121], [mx, 114]]);
+}
+cypress(mosque - 108, 306, 70);
+cypress(mosque + 112, 306, 62);
+// The church: a bell tower with a red-tiled cap and a cross
+const church = 408;
+rect('#efdbb6', church - 10, 220, 20, 90);
+rect('#c3a690', church + 5, 222, 5, 88);
+arch('#7d6c74', church - 5, 246, 9, 16);
+dome('#b5553f', church, 220, 12, 10);
+line('#4a3b3c', 1.3, [[church, 210], [church, 196]]);
+line('#4a3b3c', 1.3, [[church - 4, 201], [church + 4, 201]]);
+
+// ── The middle hills, stacked with stone houses ──
+layer();
+decimals = 1;
+hill(tone('#b99c8f', 0.35), middle);
+const landmarks = (x: number) => (x > 452 && x < 668) || (x > 396 && x < 420);
+row(middle, 0, W, [10, 22, 8, 16], -10, mid1, landmarks);
+minaret(764, middle(764) - 8, 30, 0.3);
+minaret(1124, middle(1124) - 8, 26, 0.3);
+layer();
+row(middle, 0, W, [12, 26, 10, 18], 4, mid2, (x) => x > 470 && x < 650);
+rect('url(#amman-mist)', 0, 296, W, 44);
+decimals = 10;
+
+// ── The Roman Theatre, carved into Jabal al-Jofeh, houses on the hill above ──
+layer();
+hill('url(#amman-earth)', jofeh, 20, 620);
+row(jofeh, 30, 610, [9, 18, 7, 13], 1, mid2);
+layer();
+row(jofeh, 20, 620, [11, 20, 8, 15], 11, nearA);
+minaret(96, jofeh(96) + 4, 34, 0.14);
+layer();
+{
+  const cx = 300;
+  const cy = 418;
+  // Seats: many thin rows, each a lit tread and a shaded riser, in three blocks split by two
+  // walkways (a wider riser), the way the real cavea is divided
+  const tiers = 24;
+  const rx = (k: number) => 52 + k * 6;
+  const ry = (k: number) => rx(k) * 0.24;
+  const lift = 2.6;
+  for (let k = tiers; k >= 1; k--) {
+    const outer = arc(cx, cy - k * lift, rx(k), ry(k));
+    const inner = arc(cx, cy - (k - 1) * lift, rx(k - 1), ry(k - 1)).reverse();
+    const walkway = k === 9 || k === 17;
+    poly(walkway ? '#a98f80' : k % 2 ? 'url(#amman-tread)' : 'url(#amman-riser)', [...outer, ...inner]);
+  }
+  poly('#e8d4b1', arc(cx, cy, rx(0), ry(0)));
+  // Stairways climbing the seats, and the arched entrances through the top
+  for (const a of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+    const t = Math.PI - a * Math.PI;
+    line('rgba(150, 120, 105, 0.55)', 1, Array.from({ length: tiers + 1 }, (_, k) => [cx + rx(k) * Math.cos(t), cy - k * lift - ry(k) * Math.sin(t)]));
+  }
+  line('rgba(120, 95, 85, 0.55)', 1.2, arc(cx, cy - tiers * lift, rx(tiers), ry(tiers)));
+  for (const a of [0.27, 0.42, 0.58, 0.73]) {
+    const t = Math.PI - a * Math.PI;
+    const x = cx + rx(tiers - 2) * Math.cos(t);
+    const y = cy - (tiers - 2) * lift - ry(tiers - 2) * Math.sin(t);
+    arch('#7f6b6f', x - 3, y + 6, 6, 8);
+  }
+  // The stage building
+  rect('#e3c79f', cx - 112, 404, 224, 16);
+  rect('#f2dfbd', cx - 112, 404, 224, 1.6);
+  for (let i = 0; i < 7; i++) arch('#8a7476', cx - 96 + i * 30, 420, 8, 12);
+}
+cypress(46, jofeh(46) + 18, 48, 0.1);
+cypress(560, jofeh(560) + 22, 56, 0.08);
+
+// ── The nearest houses, east of the theatre ──
+layer();
+row(near, 600, W, [20, 40, 18, 44], -8, nearA);
+minaret(904, near(904) - 14, 44, 0.08);
+layer();
+row(near, 610, W, [24, 50, 20, 52], 20, nearB);
+for (const [x, h] of [[742, 64], [988, 70], [1172, 58], [1318, 66]] as const) cypress(x, near(x) + 30, h);
+
+// ── Shade: the low sun lights the upper storeys first; the streets are still in shadow ──
+layer();
+rect('url(#amman-low)', 0, 300, W, 120);
+rect('url(#amman-street)', 0, 372, W, 48);
 
 // A flock of pigeons, scattered around the middle of their loop
-const pigeons = [
-  [0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6], [-8, 4], [23, 11],
-];
-
-// Citadel: the Temple of Hercules (standing columns with a fragment of architrave) and the
-// Umayyad Palace's domed hall
-const templeX = 262;
-const templeBase = citadel(templeX + 20) - 1;
-const palaceX = 352;
-const palaceBase = citadel(palaceX) - 1;
+const pigeons = [[0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6], [-8, 4], [23, 11]];
 ---
 
 <svg class="skyline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" data-horizon={HORIZON_Y} aria-hidden="true" focusable="false">
   <defs>
+    <radialGradient
+      id="amman-sun"
+      cx="0"
+      cy={HORIZON_Y}
+      r="560"
+      gradientUnits="userSpaceOnUse"
+      gradientTransform={`translate(0 ${HORIZON_Y}) scale(1 0.32) translate(0 ${-HORIZON_Y})`}
+    >
+      <stop offset="0" stop-color="#ffd8a2" stop-opacity="0.65"></stop>
+      <stop offset="0.45" stop-color="#ffb98a" stop-opacity="0.22"></stop>
+      <stop offset="1" stop-color="#ffb98a" stop-opacity="0"></stop>
+    </radialGradient>
     <linearGradient id="amman-far" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3a2d4c"></stop>
-      <stop offset="0.6" stop-color="#211c36"></stop>
+      <stop offset="0" stop-color="#b597ae"></stop>
+      <stop offset="0.5" stop-color="#9e839f"></stop>
     </linearGradient>
     <linearGradient id="amman-mist" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#d8a9b0" stop-opacity="0"></stop>
-      <stop offset="0.5" stop-color="#d8a9b0" stop-opacity="0.16"></stop>
-      <stop offset="1" stop-color="#d8a9b0" stop-opacity="0"></stop>
+      <stop offset="0" stop-color="#f3cbbd" stop-opacity="0"></stop>
+      <stop offset="0.5" stop-color="#f3cbbd" stop-opacity="0.3"></stop>
+      <stop offset="1" stop-color="#f3cbbd" stop-opacity="0"></stop>
     </linearGradient>
-    <radialGradient id="amman-dome" cx="0.35" cy="0.3" r="0.8">
-      <stop offset="0" stop-color="#3f5f8f"></stop>
-      <stop offset="1" stop-color="#1c2b4a"></stop>
+    <linearGradient id="amman-glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7aa9bb"></stop>
+      <stop offset="0.35" stop-color="#3f6a80"></stop>
+      <stop offset="1" stop-color="#22394d"></stop>
+    </linearGradient>
+    <linearGradient id="amman-cylinder-cap" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9cc6d4"></stop>
+      <stop offset="1" stop-color="#2c4d62"></stop>
+    </linearGradient>
+    <radialGradient id="amman-dome" cx="0.32" cy="0.25" r="0.85">
+      <stop offset="0" stop-color="#bff2f1"></stop>
+      <stop offset="0.5" stop-color="#46b8c6"></stop>
+      <stop offset="1" stop-color="#1b6f82"></stop>
     </radialGradient>
-    <!-- Ablaq: the alternating dark and pale courses of Abu Darwish Mosque -->
-    <pattern id="amman-ablaq" width="8" height="6" patternUnits="userSpaceOnUse">
-      <rect width="8" height="3" fill="#121729"></rect>
-      <rect y="3" width="8" height="3" fill="#4a4b60"></rect>
+    <linearGradient id="amman-earth" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#cfa98a"></stop>
+      <stop offset="1" stop-color="#9f8074"></stop>
+    </linearGradient>
+    <linearGradient id="amman-tread" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f2ddb7"></stop>
+      <stop offset="1" stop-color="#d6ba96"></stop>
+    </linearGradient>
+    <linearGradient id="amman-riser" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#cdb092"></stop>
+      <stop offset="1" stop-color="#a98e7f"></stop>
+    </linearGradient>
+    <!-- Repeating details on the towers: glass floor lines, window grids, stone floor lines -->
+    <pattern id="amman-floors" width="10" height="5.5" patternUnits="userSpaceOnUse">
+      <rect y="4.9" width="10" height="0.6" fill="rgba(14, 30, 46, 0.32)"></rect>
     </pattern>
+    <pattern id="amman-flats" x="862" y="158" width="7" height="6.5" patternUnits="userSpaceOnUse">
+      <rect width="3.6" height="3.4" fill="#7d8193"></rect>
+    </pattern>
+    <pattern id="amman-offices" x="1296" y="202" width="6.5" height="7" patternUnits="userSpaceOnUse">
+      <rect width="3" height="3.6" fill="#808396"></rect>
+    </pattern>
+    <pattern id="amman-stone-floors" x="1014" y="104" width="10" height="7" patternUnits="userSpaceOnUse">
+      <rect y="4" width="10" height="0.8" fill="rgba(110, 85, 70, 0.3)"></rect>
+    </pattern>
+    <pattern id="amman-podium" x="1150" y="240" width="10" height="7" patternUnits="userSpaceOnUse">
+      <rect y="2" width="10" height="1.2" fill="rgba(200, 225, 235, 0.14)"></rect>
+    </pattern>
+    {
+      windowStyles.map((s) => {
+        const { stepX, stepY, ww, wh } = windowGrid(s);
+        const frame = r1(0.6 * s.scale);
+        return (
+          <Fragment>
+            <pattern id={`amman-win-${s.name}`} width={stepX} height={stepY} patternUnits="userSpaceOnUse">
+              <rect width={ww} height={wh} fill={tone(WINDOW, s.haze)}></rect>
+            </pattern>
+            <pattern id={`amman-win-${s.name}-framed`} width={stepX} height={stepY} patternUnits="userSpaceOnUse">
+              <rect width={ww} height={wh} fill={tone(FRAME, s.haze)}></rect>
+              <rect x={frame} y={frame} width={r1(ww - 2 * frame)} height={r1(wh - 2 * frame)} fill={tone(WINDOW, s.haze)}></rect>
+            </pattern>
+          </Fragment>
+        );
+      })
+    }
+    <linearGradient id="amman-low" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3c2c48" stop-opacity="0"></stop>
+      <stop offset="1" stop-color="#3c2c48" stop-opacity="0.38"></stop>
+    </linearGradient>
+    <linearGradient id="amman-street" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#070a14" stop-opacity="0"></stop>
+      <stop offset="1" stop-color="#070a14" stop-opacity="0.92"></stop>
+    </linearGradient>
   </defs>
 
-  <!-- Far ranges, hazy with distance, with a rim of first light on the crest -->
-  <path class="amman-far" d={ridge(far)} fill="url(#amman-far)"></path>
-  <path class="amman-rim" d={crest(far)}></path>
-  <rect x="0" y="168" width={W} height="60" fill="url(#amman-mist)"></rect>
-
-  <!-- Middle hills and the modern city -->
-  <g class="amman-mid">
-    <path d={ridge(mid)}></path>
-    <path class="amman-rim soft" d={crest(mid)}></path>
-    {mids.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
-    {abdali.map((t) => t.slant
-      ? <path d={`M${t.x} ${r1(mid(t.x) + 2)} V${r1(mid(t.x) - t.h + 14)} L${t.x + t.w} ${r1(mid(t.x) - t.h)} V${r1(mid(t.x) + 2)} Z`} />
-      : <rect x={t.x} y={r1(mid(t.x) - t.h)} width={t.w} height={t.h + 2} />)}
-    {gate.map((t) => <rect x={t.x} y={r1(mid(t.x) - t.h)} width={t.w} height={t.h + 2} />)}
-    <!-- King Abdullah I Mosque: drum, blue dome and two minarets -->
-    <rect x={mosqueX - 40} y={r1(mosqueBase - 22)} width="80" height="24"></rect>
-    <rect x={mosqueX - 26} y={r1(mosqueBase - 34)} width="52" height="14"></rect>
-    {[mosqueX - 62, mosqueX + 56].map((mx) => (
-      <g>
-        <rect x={mx} y={r1(mosqueBase - 104)} width="6" height="106"></rect>
-        <rect x={mx - 2} y={r1(mosqueBase - 84)} width="10" height="4"></rect>
-        <path d={`M${mx - 1} ${r1(mosqueBase - 104)} L${mx + 3} ${r1(mosqueBase - 120)} L${mx + 7} ${r1(mosqueBase - 104)} Z`}></path>
-      </g>
-    ))}
-    {/* Raghadan flagpole */}
-    <rect x={poleX - 1.5} y={r1(poleTop)} width="3" height={r1(mid(poleX) - poleTop + 2)}></rect>
-    {greenMid.map((m) => (
-      <g>
-        <rect x={m.x - 1.5} y={r1(m.base - m.h)} width="3" height={m.h}></rect>
-        <rect x={m.x - 3} y={r1(m.base - m.h * 0.72)} width="6" height="2"></rect>
-      </g>
-    ))}
-  </g>
-  {/* Abu Darwish Mosque, in its stripes */}
-  <g class="amman-darwish">
-    <rect x={darwishX} y={r1(darwishBase - 26)} width="62" height="27" fill="url(#amman-ablaq)"></rect>
-    <rect x={darwishX + 64} y={r1(darwishBase - 66)} width="10" height="67" fill="url(#amman-ablaq)"></rect>
-    <path d={`M${darwishX + 63} ${r1(darwishBase - 66)} L${darwishX + 69} ${r1(darwishBase - 76)} L${darwishX + 75} ${r1(darwishBase - 66)} Z`} fill="#121729"></path>
-    <path d={`M${darwishX + 18} ${r1(darwishBase - 26)} A13 13 0 0 1 ${darwishX + 44} ${r1(darwishBase - 26)} Z`} fill="#121729"></path>
-  </g>
-  {/* The first light catching the tops of the towers */}
-  {[...abdali.filter((t) => !t.slant), ...gate].map((t) => (
-    <rect class="tower-rim" x={t.x} y={r1(mid(t.x) - t.h)} width={t.w} height="1.4" />
-  ))}
-  {/* Aviation beacons on the tallest towers */}
-  {[gate[0], gate[1], abdali[1]].map((t, i) => (
-    <circle class="beacon" cx={r1(t.x + t.w / 2)} cy={r1(mid(t.x) - t.h - (t.slant ? 0 : 3))} r="1.8" style={`animation-delay:${-i * 0.8}s`} />
-  ))}
-  {greenMid.map((m) => <circle class="green" cx={m.x} cy={r1(m.base - m.h - 2)} r="2" />)}
-  <path class="amman-dome" d={`M${mosqueX - 26} ${r1(mosqueBase - 33)} A26 26 0 0 1 ${mosqueX + 26} ${r1(mosqueBase - 33)} Z`} fill="url(#amman-dome)"></path>
-  <g class="amman-flag">
-    <path d={band(0)} fill="#16161a"></path>
-    <path d={band(1)} fill="#e9e5dc"></path>
-    <path d={band(2)} fill="#1f7a43"></path>
-    <path d={chevron} fill="#c3202f"></path>
-    <circle cx={r1(poleX + flagW * 0.17)} cy={r1(poleTop + 1.5 * stripe + wave(0.17))} r="2" fill="#e9e5dc"></circle>
-  </g>
-  {[...abdali, ...gate].flatMap((t, ti) =>
-    Array.from({ length: 6 }, (_, k) => {
-      const lx = t.x + 5 + ((k * 7 + ti * 3) % Math.max(1, t.w - 9));
-      const ly = mid(t.x) - t.h + 18 + k * (t.h / 7);
-      const out = (k * 13 + ti * 7) % 90;
-      return <rect class:list={['lit', { fades: out < 60 }]} x={r1(lx)} y={r1(ly)} width="2.4" height="3" style={`--out:${out}%`} />;
-    }),
-  )}
-  <rect x="0" y="232" width={W} height="44" fill="url(#amman-mist)"></rect>
-
-  <!-- Citadel hill: Temple of Hercules, the Umayyad Palace dome, houses on the slopes -->
-  <g class="amman-citadel">
-    <path d={ridge(citadel)}></path>
-    {citadelHouses.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
-    <rect x={templeX - 8} y={r1(templeBase - 6)} width="70" height="8"></rect>
-    {[0, 14, 28].map((dx) => <rect x={templeX + dx} y={r1(templeBase - 62)} width="8" height="58" />)}
-    <rect x={templeX - 3} y={r1(templeBase - 70)} width="45" height="8"></rect>
-    <rect x={templeX + 48} y={r1(templeBase - 44)} width="8" height="40"></rect>
-    <rect x={palaceX - 18} y={r1(palaceBase - 20)} width="36" height="21"></rect>
-    <path d={`M${palaceX - 15} ${r1(palaceBase - 19)} A15 15 0 0 1 ${palaceX + 15} ${r1(palaceBase - 19)} Z`}></path>
-  </g>
-
-  <!-- Nearest hills: stone houses, rooftop water tanks, window lights -->
-  <g class="amman-front">
-    <path d={ridge(front)}></path>
-    {fronts.map((b) => <rect x={r1(b.x)} y={r1(b.y)} width={r1(b.w)} height={r1(b.h)} />)}
-    {[...fronts, ...mids, ...citadelHouses].filter((b) => b.tank).map((b) => <rect x={r1(b.tank!.x)} y={r1(b.tank!.y)} width="5" height="3" />)}
-    {greenFront.map((m) => (
-      <g>
-        <rect x={m.x - 2.5} y={r1(m.base - m.h)} width="5" height={m.h}></rect>
-        <rect x={m.x - 4.5} y={r1(m.base - m.h * 0.74)} width="9" height="3"></rect>
-        <path d={`M${m.x - 2.5} ${r1(m.base - m.h)} L${m.x} ${r1(m.base - m.h - 8)} L${m.x + 2.5} ${r1(m.base - m.h)} Z`}></path>
-      </g>
-    ))}
-  </g>
-  {greenFront.map((m) => <circle class="green" cx={m.x} cy={r1(m.base - m.h - 9)} r="2.4" />)}
-  {/* Rooftop pigeons, circling over the old city */}
-  <g class="pigeons" transform="translate(470 112)">
+  <rect width={W} height={HORIZON_Y + 40} fill="url(#amman-sun)"></rect>
+  {
+    layers.map((l) => (
+      <Fragment>
+        {[...l.paths].map(([fill, ds]) => <path fill={fill} d={ds.join('')} />)}
+        {l.strokes.map((s) => <path d={s.d} fill="none" stroke={s.stroke} stroke-width={s.width} stroke-linecap="round" />)}
+        {l.lights.map((w) => (
+          <rect class:list={['lit', { fades: w.out < 70 }]} x={w.x} y={w.y} width={w.w} height={w.h} style={`--out:${w.out}%`} />
+        ))}
+        {l.greens.map((g) => <circle class="green" cx={g.x} cy={g.y} r={g.r} />)}
+        {l.beacons.map((b, i) => <circle class="beacon" cx={b.x} cy={b.y} r="1.8" style={`animation-delay:${-i * 0.8}s`} />)}
+      </Fragment>
+    ))
+  }
+  {/* Rooftop pigeons, circling over the city */}
+  <g class="pigeons" transform="translate(700 150)">
     <g class="flock">
-      {pigeons.map(([x, y], i) => (
-        <path class="pigeon" d={`M${x * 1.4 - 4.6} ${y * 1.4} Q${x * 1.4 - 2.3} ${y * 1.4 - 3.4} ${x * 1.4} ${y * 1.4} Q${x * 1.4 + 2.3} ${y * 1.4 - 3.4} ${x * 1.4 + 4.6} ${y * 1.4}`} style={`animation-delay:${(-i * 0.13).toFixed(2)}s`} />
-      ))}
+      {
+        pigeons.map(([x, y], i) => (
+          <path
+            class="pigeon"
+            d={`M${x * 1.4 - 4.6} ${y * 1.4}Q${x * 1.4 - 2.3} ${y * 1.4 - 3.4} ${x * 1.4} ${y * 1.4}Q${x * 1.4 + 2.3} ${y * 1.4 - 3.4} ${x * 1.4 + 4.6} ${y * 1.4}`}
+            style={`animation-delay:${(-i * 0.13).toFixed(2)}s`}
+          />
+        ))
+      }
     </g>
   </g>
-  {/* About two thirds of the lights go out, one by one, as dawn comes; the rest stay on */}
-  {[...fronts, ...mids, ...citadelHouses].filter((b) => b.light).map((b) => (
-    <rect class:list={['lit', { fades: b.light!.out < 66 }]} x={r1(b.light!.x)} y={r1(b.light!.y)} width="2.4" height="3" style={`--out:${b.light!.out}%`} />
-  ))}
 </svg>

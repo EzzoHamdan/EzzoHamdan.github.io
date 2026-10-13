@@ -870,47 +870,17 @@ section h2 {
 
 .skyline {
   width: 100%;
-  /* Keep the scene's own 4:1 proportions so wide screens don't crop the tops of the towers and
-     the flag; very wide, short screens are capped and may lose a sliver of empty sky */
+  /* Keep the scene's own proportions (1440 by 420) so wide screens don't crop the tops of the
+     towers, the columns and the flag; very wide, short screens are capped and may lose a sliver
+     of empty sky */
   height: auto;
-  aspect-ratio: 4 / 1;
-  min-height: 150px;
-  max-height: 42vh;
+  aspect-ratio: 1440 / 420;
+  min-height: 160px;
+  max-height: 48vh;
   margin-top: -1px;
   /* Window lights go out as the city comes fully into view */
   view-timeline-name: --city;
   view-timeline-axis: block;
-}
-
-.amman-rim {
-  fill: none;
-  stroke: rgba(240, 163, 94, 0.4);
-  stroke-width: 1.5;
-}
-
-.amman-mid {
-  fill: #141a33;
-}
-
-.amman-citadel {
-  fill: #0d1227;
-}
-
-.amman-front {
-  fill: var(--ground);
-}
-
-.amman-flag {
-  opacity: 0.85;
-}
-
-.amman-rim.soft {
-  stroke: rgba(240, 163, 94, 0.22);
-  stroke-width: 1;
-}
-
-.skyline .tower-rim {
-  fill: rgba(240, 163, 94, 0.45);
 }
 
 /* Amman's minarets are lit green through the night */
