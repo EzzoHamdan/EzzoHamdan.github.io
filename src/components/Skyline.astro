@@ -7,9 +7,10 @@
 // the Temple of Hercules (two columns still carrying their beam, a third alone, a broken stump);
 // the middle hills stacked with stone houses; the Roman Theatre's tiers carved into the hill in
 // the foreground; the nearest houses, the more detailed the nearer (parapets, water tanks, solar
-// heaters, dishes and antennas on the roofs; arched, plain or blue-framed windows, balconies,
-// floor lines, air conditioners and stone courses on the walls); cypresses; minarets lit green;
-// red beacons on the tallest towers; rooftop pigeons.
+// heaters and dishes on the roofs; arched, plain or blue-framed windows, balconies, floor
+// lines, air conditioners and stone courses on the walls); trees rising from behind the houses
+// (cypresses, Aleppo pines, olives, date palms); minarets lit green; red beacons on the tallest
+// towers; rooftop pigeons.
 //
 // Generated deterministically at build time. Shapes are merged by color into one path each, layer
 // by layer, so the whole city is a few dozen elements however many houses it has. The sky's
@@ -286,6 +287,83 @@ function cypress(x: number, base: number, h: number, haze = 0) {
   poly(tone('#2f4637', haze), pts);
   poly(tone('#4d6a52', haze), [[x, base - h], [x - w * 0.42, base - h * 0.62], [x - w * 0.5, base - h * 0.25], [x - w * 0.3, base], [x - w * 0.05, base]]);
 }
+// Trees draw from their own sequence, so adding or moving them never reshuffles the houses
+let treeSeed = 97;
+const R = () => (treeSeed = (treeSeed * 16807) % 2147483647) / 2147483647;
+/** Points around an ellipse, for leafy crowns. */
+const oval = (cx: number, cy: number, rx: number, ry: number, steps = 9) =>
+  Array.from({ length: steps }, (_, i) => [cx + rx * Math.cos((i / steps) * Math.PI * 2), cy + ry * Math.sin((i / steps) * Math.PI * 2)]);
+/** An Aleppo pine: a slim trunk and a broad, flat, cloud-like crown. */
+function pine(x: number, base: number, h: number, haze: number) {
+  const top = base - h * 0.62;
+  poly(tone('#5a4637', haze), [[x - h * 0.026, base], [x - h * 0.012, top], [x + h * 0.012, top], [x + h * 0.026, base]]);
+  const cy = base - h * 0.8;
+  const w = h * 0.38;
+  for (let i = 0; i < 5; i++) {
+    poly(tone('#34503f', haze), oval(x + (R() - 0.5) * w * 1.3, cy + (R() - 0.5) * h * 0.14, w * (0.38 + 0.22 * R()), h * (0.09 + 0.05 * R())));
+  }
+  for (let i = 0; i < 3; i++) {
+    poly(tone('#5a7a57', haze), oval(x - w * (0.1 + 0.35 * R()), cy - h * (0.04 + 0.05 * R()), w * (0.18 + 0.12 * R()), h * 0.055));
+  }
+}
+/** An olive: a short, forked trunk and a round, silvery crown. */
+function olive(x: number, base: number, h: number, haze: number) {
+  const fork = base - h * 0.42;
+  poly(tone('#6b5a48', haze), [[x - h * 0.05, base], [x - h * 0.02, fork], [x - h * 0.12, fork - h * 0.12], [x + h * 0.1, fork - h * 0.14], [x + h * 0.03, fork], [x + h * 0.05, base]]);
+  const cy = base - h * 0.66;
+  for (let i = 0; i < 5; i++) {
+    poly(tone('#647659', haze), oval(x + (R() - 0.5) * h * 0.42, cy + (R() - 0.5) * h * 0.22, h * (0.2 + 0.08 * R()), h * (0.15 + 0.06 * R())));
+  }
+  for (let i = 0; i < 3; i++) {
+    poly(tone('#9fae88', haze), oval(x - h * (0.06 + 0.16 * R()), cy - h * (0.06 + 0.08 * R()), h * (0.09 + 0.05 * R()), h * 0.07));
+  }
+}
+/** A date palm: a leaning, ringed trunk and drooping fronds. */
+function palm(x: number, base: number, h: number, haze: number) {
+  const lean = (R() - 0.5) * h * 0.2;
+  const at = (t: number) => [x + lean * t * t, base - h * t];
+  const left: number[][] = [];
+  const right: number[][] = [];
+  for (let i = 0; i <= 6; i++) {
+    const t = i / 6;
+    const [px, py] = at(t);
+    const half = h * (0.026 - 0.01 * t);
+    left.push([px - half, py]);
+    right.push([px + half, py]);
+  }
+  poly(tone('#8b7660', haze), [...left, ...right.reverse()]);
+  const [tx, ty] = at(1);
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * (1.05 + (i / 8) * 0.9);
+    const length = h * (0.34 + 0.08 * R());
+    const tipX = tx + Math.cos(a) * length;
+    const tipY = ty + Math.sin(a) * length * 0.55 + length * 0.42 * Math.abs(Math.cos(a));
+    const midX = (tx + tipX) / 2;
+    const midY = (ty + tipY) / 2 - length * 0.12;
+    const wide = h * 0.03;
+    poly(tone(i < 4 ? '#66854f' : '#3c5a3c', haze), [[tx, ty], [midX, midY - wide], [tipX, tipY], [midX, midY + wide]]);
+  }
+}
+type Tree = 'cypress' | 'pine' | 'olive' | 'palm';
+/**
+ * A grove along a hill, drawn in its own layer just before the row of houses in front of it, so
+ * the houses hide the trunks and the crowns rise over the roofs. `sink` puts the trees' feet below
+ * the hill line; heights between hMin and hMax.
+ */
+function grove(fn: (x: number) => number, x0: number, x1: number, count: number, sink: number, hMin: number, hMax: number, haze: number, kinds: Tree[], skip?: (x: number) => boolean) {
+  layer();
+  for (let i = 0; i < count; i++) {
+    const x = x0 + ((i + 0.15 + R() * 0.7) * (x1 - x0)) / count;
+    if (skip?.(x)) continue;
+    const h = hMin + R() * (hMax - hMin);
+    const base = fn(x) + sink;
+    const kind = kinds[Math.floor(R() * kinds.length)];
+    if (kind === 'cypress') cypress(x, base, h * 1.15, haze);
+    else if (kind === 'pine') pine(x, base, h, haze);
+    else if (kind === 'olive') olive(x, base, h * 0.8, haze);
+    else palm(x, base, h * 1.1, haze);
+  }
+}
 /** A small neighbourhood minaret with its green lantern. */
 function minaret(x: number, base: number, h: number, haze: number) {
   rect(tone('#f0ddb9', haze), x - 2, base - h, 4, h);
@@ -439,10 +517,17 @@ layer();
 decimals = 1;
 hill(tone('#b99c8f', 0.35), middle);
 const landmarks = (x: number) => (x > 452 && x < 668) || (x > 396 && x < 420);
+decimals = 10;
+grove(middle, 0, W, 18, 2, 30, 42, 0.32, ['pine', 'cypress', 'olive', 'pine'], landmarks);
+layer();
+decimals = 1;
 row(middle, 0, W, [10, 22, 8, 16], -10, mid1, landmarks);
 minaret(764, middle(764) - 8, 30, 0.3);
 minaret(1124, middle(1124) - 8, 26, 0.3);
+decimals = 10;
+grove(middle, 0, W, 16, 9, 26, 38, 0.22, ['cypress', 'pine', 'olive', 'palm'], (x) => x > 470 && x < 650);
 layer();
+decimals = 1;
 row(middle, 0, W, [12, 26, 10, 18], 4, mid2, (x) => x > 470 && x < 650);
 rect('url(#amman-mist)', 0, 296, W, 44);
 decimals = 10;
@@ -450,7 +535,10 @@ decimals = 10;
 // ── The Roman Theatre, carved into Jabal al-Jofeh, houses on the hill above ──
 layer();
 hill('url(#amman-earth)', jofeh, 0, 620);
+grove(jofeh, 0, 620, 7, 4, 26, 36, 0.16, ['pine', 'olive', 'cypress', 'palm']);
+layer();
 row(jofeh, 0, 610, [9, 18, 7, 13], 1, mid2);
+grove(jofeh, 0, 620, 6, 14, 26, 34, 0.1, ['cypress', 'olive', 'pine']);
 layer();
 row(jofeh, 0, 620, [11, 20, 8, 15], 11, nearA);
 minaret(96, jofeh(96) + 4, 34, 0.14);
@@ -490,20 +578,21 @@ layer();
 }
 // A cluster of the nearest houses in the corner west of the theatre, stopping short of its seats
 const corner = (x: number) => 350 + x * 0.22 - 3 * Math.sin(x / 23);
+grove(corner, 0, 80, 2, 0, 50, 64, 0.06, ['palm', 'pine']);
 layer();
 row(corner, 0, 74, [18, 30, 18, 34], -6, nearA);
+grove(corner, 0, 70, 2, 22, 48, 60, 0.03, ['cypress', 'olive']);
 layer();
 row(corner, 0, 64, [22, 34, 22, 40], 18, nearB);
-cypress(84, corner(84) + 14, 52);
-cypress(560, jofeh(560) + 22, 56, 0.08);
 
-// ── The nearest houses, east of the theatre ──
+// ── The nearest houses, east of the theatre, trees rising from the gardens behind them ──
+grove(near, 560, W, 11, -2, 56, 78, 0.1, ['pine', 'palm', 'cypress', 'olive']);
 layer();
 row(near, 600, W, [20, 40, 18, 44], -8, nearA);
 minaret(904, near(904) - 14, 44, 0.08);
+grove(near, 600, W, 13, 24, 52, 76, 0.03, ['palm', 'cypress', 'pine', 'olive', 'palm']);
 layer();
 row(near, 610, W, [24, 50, 20, 52], 20, nearB);
-for (const [x, h] of [[742, 64], [988, 70], [1172, 58], [1318, 66]] as const) cypress(x, near(x) + 30, h);
 
 // ── Shade: the low sun lights the upper storeys first; the streets are still in shadow ──
 layer();
