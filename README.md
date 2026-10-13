@@ -95,7 +95,7 @@ nothing deploys from a feature branch.
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
-| Amman at first light (Temple of Hercules, King Abdullah I Mosque, the Abdali towers, the Roman Theatre, stone houses with their rooftops and balconies, minarets, beacons, pigeons, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
+| Amman at first light (Temple of Hercules, King Abdullah I Mosque, the Abdali towers, the Roman Theatre, stone houses with their rooftops and balconies, trees behind them, minarets, beacons, pigeons, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
 | Blog schema and routes | [`src/content.config.ts`](src/content.config.ts), [`src/pages/blog/`](src/pages/blog/) |
 | Post-build checks | [`scripts/check-dist.mjs`](scripts/check-dist.mjs) |
@@ -405,6 +405,10 @@ if the spelling differs (it's "Shedar", not "Schedar").
   (`rect(…, true)`, `hill`) that paints before every detail; without it, a wall tone first used
   after some windows painted over them and left blank houses. Drawing each house as its own group
   made the inline SVG about 185 KB; this way it is about 130 KB (32 KB gzipped) with full detail.
+- **Trees grow behind the houses, from their own random sequence** (`Skyline.astro::grove`, `R`).
+  Each grove is its own layer, drawn just before the row of houses in front of it, so the houses
+  hide the trunks and the crowns show over the roofs. The trees' random numbers are separate from
+  the houses' (`rand`), so adding, moving or removing a tree never reshuffles the city.
 - ⚠ **Planet positions are valid from 1800 to 2050.** They use Standish's approximate Keplerian
   elements (table 1, `astro.ts::ELEMENTS`). After 2050, switch to table 2 (valid 3000 BC to
   3000 AD), which adds correction terms for Jupiter and Saturn.
