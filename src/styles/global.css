@@ -1216,6 +1216,60 @@ section h2 {
   z-index: 6;
 }
 
+/* Until journey.ts has laid out the route, the sections hold no scroll distance, so the contact
+   section (Amman) and the footer sit right under the hero; keep them hidden for those first frames.
+   Hidden, not removed: the route is measured from where they are. */
+.journey:not(.has-route) :is(#contact, .site-footer) {
+  visibility: hidden;
+}
+
+/* The hint that the page travels: a still label beside a line that a point of light falls down.
+   Only in the journey, where nothing else on the first screen says there is more. It closes the
+   hero block rather than sitting fixed on the screen: fixed, it ran into the hero's stats on
+   short screens, and inside the block it shrinks with the hero to fit. */
+.scroll-cue {
+  display: none;
+}
+
+.journey .hero > .scroll-cue {
+  display: block;
+  margin-top: 2.75rem;
+  pointer-events: none;
+  /* journey.ts drives this paragraph's opacity; the hero's entrance animation would override it */
+  animation: none;
+}
+
+.journey .scroll-cue span {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  font-size: var(--tiny);
+  color: var(--haze);
+  /* Arrives after the hero has settled; journey.ts fades the paragraph out on the first scroll */
+  animation: settle 1.1s var(--ease) 1.3s both;
+}
+
+/* Layers: the falling light's head, its tail, then the line it falls down. The tail ends at the
+   head's centre, like the shooting stars in the sky behind. */
+.journey .scroll-cue span::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 40px;
+  background:
+    radial-gradient(closest-side, #fffaf0 30%, rgba(201, 161, 91, 0.9) 60%, transparent) 50% -8px / 7px 7px no-repeat,
+    linear-gradient(transparent, rgba(255, 226, 170, 0.9)) 50% -23px / 2px 18px no-repeat,
+    linear-gradient(rgba(154, 164, 196, 0.6), rgba(154, 164, 196, 0.12)) 50% 0 / 1px 100% no-repeat;
+  animation: cue-fall 2.8s cubic-bezier(0.45, 0, 0.55, 1) 2.4s infinite;
+}
+
+@keyframes cue-fall {
+  80%,
+  100% {
+    background-position: 50% 48px, 50% 34px, 50% 0;
+  }
+}
+
 /* Titles: written in starlight. Each glyph flies in from a scattered point of light as --a goes
    from 0 to 1, and is filled with "starlit ink": a pale gradient with a few stars caught in it. */
 .journey [data-stop='title'] {

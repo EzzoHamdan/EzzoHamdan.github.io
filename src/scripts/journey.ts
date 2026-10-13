@@ -212,6 +212,7 @@ export function startJourney() {
   const captionDistance = Object.assign(document.createElement('span'), { className: 'sky-distance' });
   viewCaption?.replaceChildren(captionName, captionDistance);
   const heroCaption = document.getElementById('sky-caption');
+  const scrollCue = document.getElementById('scroll-cue');
   const skyline = document.querySelector<SVGSVGElement>('.skyline');
 
   let content = 0;
@@ -277,6 +278,9 @@ export function startJourney() {
       sec.style.height = `${bottom - top}px`;
       top = bottom;
     });
+    // The route now holds the scroll distance, so the contact section is far below (see the
+    // .has-route rule in global.css)
+    root.classList.add('has-route');
 
     // Where the skyline's far hills sit relative to the top of the contact section (see
     // Sky.astro::horizonNow for the mapping), so the horizon is known without reading layout
@@ -455,6 +459,7 @@ export function startJourney() {
       if (s.kind === 'hero' && heroCaption) heroCaption.style.opacity = opacity.toFixed(3);
     });
     caption(u);
+    cue(u);
   }
 
   /**
@@ -483,6 +488,12 @@ export function startJourney() {
       if (s.kind === 'hero' && heroCaption) heroCaption.style.opacity = opacity.toFixed(3);
     });
     caption(eased);
+    cue(eased);
+  }
+
+  // The scroll cue has done its job once the camera moves, and leaves before the hero does
+  function cue(u: number) {
+    if (scrollCue) scrollCue.style.opacity = (1 - smooth(0, HOLD, u)).toFixed(3);
   }
 
   // The caption names where the camera is heading

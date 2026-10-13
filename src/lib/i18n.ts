@@ -33,6 +33,7 @@ export const ui = {
     since: 'since',
     showAll: 'Show all highlights',
     showFewer: 'Show fewer',
+    scrollCue: 'Scroll to begin the journey',
     present: 'Present',
     contact: {
       title: "Let's build something meaningful",
@@ -78,6 +79,7 @@ export const ui = {
     since: 'منذ',
     showAll: 'عرض كل الإنجازات',
     showFewer: 'عرض أقل',
+    scrollCue: 'مرّر لتبدأ الرحلة',
     present: 'حتى الآن',
     contact: {
       title: 'لنصنع معًا شيئًا ذا قيمة',
