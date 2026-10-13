@@ -225,6 +225,13 @@ by on the way to the next title. The caption at the bottom names it and gives th
 Earth, which counts down on a log scale between places (`journey.ts::distanceAt`, units from
 millions of light-years down to km in `formatDistance`) and holds still while a stop is read.
 
+**The scroll cue** (`#scroll-cue`, owner's request). The first screen otherwise looks like a
+static page, so the hero ends with "Scroll to begin the journey" beside a line that a point of
+light falls down. It is part of the hero block, not fixed to the screen: fixed, it ran into the
+hero's stats on short windows, and inside the block it shrinks with the hero to fit. It fades out
+over the first `HOLD` of scroll (`journey.ts::cue`) and returns at the top. The dome never shows
+it; there the page scrolls like any other.
+
 **Stops as places in space** (`journey.ts::placeParts`, owner's request). A content stop is a
 see-through frame whose `[data-part]`s are fixed at points beside the route, given in
 `ProfilePage.astro` as `data-at="x,y,depth"` (x in viewport widths toward the stop's side, y in
@@ -430,6 +437,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
   on any ancestor of a `[data-stop]` (a section, `.container`, `.projects`, the `<ol>`) makes it
   fixed to that ancestor instead of the screen, and the plane vanishes or jumps. The sections'
   heights are set inline by `journey.ts::layout`; CSS heights on them are overridden.
+- ⚠ **Until `journey.ts::layout` runs, the journey has no scroll track.** The sections are zero
+  height then, so the contact section (with the skyline) and the footer sit right under the hero
+  for the first frames: long enough to see on every load, and longest in dev, where the scripts
+  load one by one. `.journey:not(.has-route)` keeps them hidden (not removed, so the route can be
+  measured) until `layout` adds `has-route`. Anything new placed in normal flow after the
+  sections would flash the same way.
 - **Unlike what you'd expect, journey titles are rebuilt by script** (`journey.ts::spell`): the
   `<h2>` holds a screen-reader copy of the text plus one span per letter (per word in Arabic,
   whose letters join) for the starlight assembly. Edit the title in `i18n.ts`, never in the DOM.
