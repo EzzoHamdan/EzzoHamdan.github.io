@@ -871,7 +871,7 @@ section h2 {
 .skyline {
   width: 100%;
   /* Keep the scene's own proportions (1440 by 420) so wide screens don't crop the tops of the
-     towers, the columns and the flag; very wide, short screens are capped and may lose a sliver
+     towers and the columns; very wide, short screens are capped and may lose a sliver
      of empty sky */
   height: auto;
   aspect-ratio: 1440 / 420;
