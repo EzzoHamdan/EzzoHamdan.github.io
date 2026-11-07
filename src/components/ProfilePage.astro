@@ -72,7 +72,7 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
       <div class="container hero" data-stop="hero">
         <h1 class="hero-name" id="hero-name">{t(person.name, lang)}</h1>
         <p class="hero-role">{roleLine}</p>
-        <p class="hero-lede">{t(person.summary, lang)}</p>
+        <p class="hero-lede">{t(person.intro, lang)}</p>
         <div class="hero-actions">
           <a class="btn" href={site.cv} download hreflang="en" type="application/pdf">
             <Icon name="download" />{s.downloadCv}

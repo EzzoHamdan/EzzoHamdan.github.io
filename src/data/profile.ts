@@ -43,10 +43,18 @@ export const person = {
   familyName: { en: 'Hamdan', ar: 'حمدان' },
   role: { en: 'AI Engineer', ar: 'مهندس ذكاء اصطناعي' },
   location: { en: 'Amman, Jordan', ar: 'عمّان، الأردن' },
-  /** The definitional sentence: hero lede, meta description source and llms.txt summary. */
+  /**
+   * The definitional sentence, in the third person on purpose: it is what search engines and AI
+   * assistants quote (JSON-LD description, llms.txt). The page itself speaks as Ezzaldeen: `intro`.
+   */
   summary: {
     en: 'Ezzaldeen Hamdan is an AI engineer in Amman, Jordan, and a 9XAI Fellow at Al Hussein Technical University (HTU), building retrieval-augmented generation systems, data pipelines and machine learning models for production.',
     ar: 'عز الدين حمدان مهندس ذكاء اصطناعي مقيم في عمّان، الأردن، وزميل في برنامج 9XAI في جامعة الحسين التقنية، يبني أنظمة التوليد المعزّز بالاسترجاع وخطوط معالجة البيانات ونماذج تعلّم الآلة الجاهزة للإنتاج.',
+  },
+  /** The hero's opening lines, in the first person like the rest of the page (owner's choice). */
+  intro: {
+    en: "I'm an AI engineer in Amman, Jordan, and a 9XAI Fellow at Al Hussein Technical University (HTU). I build retrieval-augmented generation systems, data pipelines and machine learning models for production.",
+    ar: 'أنا مهندس ذكاء اصطناعي في عمّان، الأردن، وزميل في برنامج 9XAI في جامعة الحسين التقنية. أبني أنظمة التوليد المعزّز بالاسترجاع وخطوط معالجة البيانات ونماذج تعلّم الآلة الجاهزة للإنتاج.',
   },
   /** Short form for <meta name="description"> (aim for ≤ 160 characters). */
   description: {
@@ -159,7 +167,7 @@ export const experience: Role[] = [
     start: '2026-02',
     end: null,
     summary: {
-      en: "Selected as 1 of 20 fellows for the inaugural national AI initiative, following a competitive, multi-stage evaluation process. The initiative, hosted by the National Council for Future Technology (NCFT) and Al Hussein Technical University (HTU), develops and validates AI solutions across Jordan's institutional and governmental partners while tackling nationwide challenges.",
+      en: "I was selected as 1 of 20 fellows for the inaugural national AI initiative, following a competitive, multi-stage evaluation process. The initiative, hosted by the National Council for Future Technology (NCFT) and Al Hussein Technical University (HTU), develops and validates AI solutions across Jordan's institutional and governmental partners while tackling nationwide challenges.",
       ar: 'تم اختياري ضمن 20 زميلًا في الدفعة الأولى من المبادرة الوطنية للذكاء الاصطناعي، بعد عملية تقييم تنافسية متعددة المراحل. تستضيف المبادرةَ المجلسُ الوطني لتكنولوجيا المستقبل وجامعةُ الحسين التقنية، وتعمل على تطوير حلول الذكاء الاصطناعي واختبارها مع الشركاء المؤسسيين والحكوميين في الأردن لمعالجة تحديات على المستوى الوطني.',
     },
     tags: [{ en: 'Applied AI', ar: 'الذكاء الاصطناعي التطبيقي' }, { en: 'Project Management', ar: 'إدارة المشاريع' }],
