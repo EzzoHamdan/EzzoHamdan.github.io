@@ -1231,14 +1231,21 @@ section h2 {
   pointer-events: auto;
 }
 
+/* The hero sits in the void (sky/genesis.ts): its name's halo is pure black there, invisible on
+   the void, still holding the words apart from the first light as it swells behind them */
+.journey .hero-name {
+  text-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
+}
+
 .journey [data-stop='hero'] {
   width: min(var(--container), 100vw);
   opacity: 1;
 }
 
+/* The journey's hero is the void before the beginning (sky/genesis.ts), not Amman's sky, so the
+   caption naming that sky (and its wishes) belongs to the dome only */
 .journey .sky-caption {
-  position: fixed;
-  z-index: 6;
+  display: none;
 }
 
 /* Until journey.ts has laid out the route, the sections hold no scroll distance, so the contact

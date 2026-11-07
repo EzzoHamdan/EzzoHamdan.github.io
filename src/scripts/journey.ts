@@ -233,7 +233,6 @@ export function startJourney() {
   const captionName = document.createElement('span');
   const captionDistance = Object.assign(document.createElement('span'), { className: 'sky-distance' });
   viewCaption?.replaceChildren(captionName, captionDistance);
-  const heroCaption = document.getElementById('sky-caption');
   const scrollCue = document.getElementById('scroll-cue');
   const skyline = document.querySelector<SVGSVGElement>('.skyline');
 
@@ -476,12 +475,11 @@ export function startJourney() {
       }
       let a = 1;
       let b = 0;
-      if (i === s0) b = genesis ? smooth(HOLD, GENESIS.close[1], u) : t;
+      if (i === s0) b = genesis ? smooth(HOLD, GENESIS.heroGone, u) : t;
       else if (i === s0 + 1) a = genesis ? smooth(GENESIS.title, 1 - HOLD, u) : t;
       else if (i < s0) b = 1;
       else a = 0;
-      const opacity = place(s, a, b, warp);
-      if (s.kind === 'hero' && heroCaption) heroCaption.style.opacity = opacity.toFixed(3);
+      place(s, a, b, warp);
     });
     caption(u);
     cue(u);
@@ -509,8 +507,7 @@ export function startJourney() {
         a = 1;
         b = smooth(0, 0.4, t);
       }
-      const opacity = place(s, a, b, 0);
-      if (s.kind === 'hero' && heroCaption) heroCaption.style.opacity = opacity.toFixed(3);
+      place(s, a, b, 0);
     });
     caption(eased);
     cue(eased);
@@ -532,7 +529,7 @@ export function startJourney() {
         ? 'home'
         : stage >= 0
           ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)]
-          : u > GENESIS.close[1] - 0.1 && u < GENESIS.title + 0.08
+          : u > GENESIS.heroGone - 0.2 && u < GENESIS.title + 0.08
             ? 'genesis'
             : near.kind === 'hero'
               ? ''
