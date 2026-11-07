@@ -214,7 +214,7 @@ The galaxies come **farthest first**, so the whole flight is a return to Earth (
 
 | Section | Passes (`sky/journey.ts::DESTINATIONS`) | From Earth (`journey.ts::DISTANCE`) | Space tinted |
 | --- | --- | --- | --- |
-| `hero` | The real sky over Amman straight up; leaving it, the beginning (below): the sky closes to a singularity, the Big Bang, and a new universe grows out of it | (Amman), then "13.8 billion years ago" | Night over Amman, then black, then the blast's embers |
+| `hero` | The void before the beginning: pitch black. Leaving it, the beginning (below): a first light swells, the Big Bang, and a new universe grows out of it | "13.8 billion years ago" | Black, then the blast's embers |
 | `about` | The Sombrero, its dust lane edge-on | 31 million light-years | Amber |
 | `experience` | The Whirlpool and its companion NGC 5195 | 28 million | Magenta |
 | `projects` | The Triangulum galaxy | 2.7 million | Teal |
@@ -228,28 +228,28 @@ Earth, which counts down on a log scale between places (`journey.ts::distanceAt`
 millions of light-years down to km in `formatDistance`) and holds still while a stop is read.
 
 **The beginning** (`sky/genesis.ts::GENESIS`, `sky/journey.ts::drawGenesis`, owner's request,
-2026-11-07). The first leg, from the hero to the "In short" title, tells how it all started, as
-positions along the route in stops:
+2026-11-07). The hero is the void, pitch black, and the first leg, from the hero to the "In
+short" title, tells how it all started, as positions along the route in stops:
 
 | From | To | On screen | Page |
 | --- | --- | --- | --- |
-| 0.2 | 0.5 (`close`) | Darkness closes in on the center of Amman's sky; the stars drift inward | The hero departs, gone by 0.5 |
-| 0.5 | 0.56 (`bang`) | The singularity: one white-hot point in total black, breathing if you stop | Caption: "The beginning, 13.8 billion years ago" |
+| 0 | 0.03 | Nothing: pure black | The hero |
+| 0.03 | 0.56 (`glow`) | A small light appears as soon as the page moves and swells, brighter and more restless, faint spikes around it | The hero departs, gone by 0.5 (`heroGone`); caption "The beginning, 13.8 billion years ago" from 0.3 |
 | 0.56 | 0.78 (`blast`) | The Big Bang: a flash from white to gold to ember red, a soft shock shell, sparks thrown out, the young universe's mottled afterglow cooling | Nothing on screen but the sky |
 | 0.56 | 0.88 (`born`) | A new universe of stars and galaxies grows out of the center to full size | "In short" gathers from 0.7 (`title`) and holds from 0.8 |
 
 ```text
-u  0 ── 0.2 ─────── 0.5 ── 0.56 ─────── 0.7 ── 0.78 ── 0.8 ──── 0.88 ── 1
-   hero holds  │ darkness closes │ point │ blast (flash, shell, sparks, afterglow) │
-               │ hero departs    │       │      new universe grows ──────────────┤
+u  0 ─ 0.03 ── 0.2 ──────── 0.5 ── 0.56 ─────── 0.7 ── 0.78 ── 0.8 ──── 0.88 ── 1
+   void │ first light swells ─────────┤ blast (flash, shell, sparks, afterglow) │
+        │      │ hero departs │ alone │      new universe grows ──────────────┤
                                                  "In short" gathers ─► holds
 ```
 
 ```mermaid
 %%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
 flowchart LR
-  hero([hero holds]) --> close[darkness closes in, hero departs]
-  close --> point((singularity))
+  hero([hero in the void]) --> light[first light swells, hero departs]
+  light --> point((the light alone))
   point --> blast[blast: flash, shell, sparks, afterglow]
   blast --> grow[new universe grows]
   grow --> title([In short gathers, then holds])
@@ -262,8 +262,11 @@ any other stop.
 
 > **Guaranteed:** the flash can only brighten at `FLASH_RISE` (3.2 a second), so scrolling back
 > and forth over it can't strobe. A jump through it (a link to a later section) shows only a faint
-> glimpse: the beginning steps aside in fast flight (`intact`), as galaxies dim. The singularity
-> is drawn where the camera looks (`cx`, `cy`), so it lines up with the title that follows.
+> glimpse: the beginning steps aside in fast flight (`intact`), as galaxies dim. The light is
+> drawn where the camera looks (`cx`, `cy`), so it lines up with the title that follows. Nothing
+> else is drawn in the void: no stars, no shooting stars, and clicks make no wishes there. The
+> journey has no hero caption (`.journey .sky-caption`); "The sky over Amman right now" belongs
+> to the dome.
 
 **The scroll cue** (`#scroll-cue`, owner's request). The first screen otherwise looks like a
 static page, so the hero ends with "Scroll to begin the journey" beside a line that a point of
@@ -364,8 +367,8 @@ galaxy's look is its branch in `galaxies.ts::paintGalaxy`.
 ### 3c. Amman at its real time of day
 
 The last scene (`#contact`) shows Amman as it is right now (owner's request, 2026-11-07): night,
-dawn, day or dusk, from the Sun's real height there. Both modes do it. Only the hero keeps showing
-"tonight at 21:00" in daylight, because the journey takes off from the stars.
+dawn, day or dusk, from the Sun's real height there. Both modes do it. Only the dome's hero
+(phones) keeps showing "tonight at 21:00" in daylight; the journey's hero is the void.
 
 `astro.ts::daylight(ms)` turns the Sun's altitude into four weights that sum to 1, so the scene
 drifts from one look to the next over an hour or so, as the real light does, instead of switching
@@ -574,7 +577,7 @@ if the spelling differs (it's "Shedar", not "Schedar").
   commands are at its top; it can also write a PNG preview to check the coastlines). Natural Earth
   polygons wrap across the 180° meridian and Antarctica's wraps around the pole; the script
   unwraps them, and a naive fill once failed on exactly that.
-- ⚠ **In the beginning the whole view is scaled around the center** (`sky/journey.ts`, `scale`), so
+- ⚠ **After the bang the whole view grows from a point around the center** (`sky/journey.ts`, `scale`), so
   anything that fills "the screen" must fill what the screen would show at full size: the star
   culling bounds (`drawStars`, `reach`) and the galaxy tint (`drawSpace`, `reach`). A plain
   `fillRect(0, 0, w, h)` there showed as a shrinking rectangle. The afterglow's blotches stay
@@ -644,15 +647,17 @@ if the spelling differs (it's "Shedar", not "Schedar").
   skyline read as "wacky". The city is now limestone lit gold by the first sun from the east,
   with its real landmarks drawn from the photos, under a sky that still holds the night. The
   Raghadan flag was removed the same day at the owner's request. That look is now the dawn one.
-- **The journey begins with the Big Bang** (2026-11-07, owner's request): the first leg now runs
-  from Amman's sky back to the singularity and out through the blast, so the flight home starts at
-  the very beginning (§3b). It replaced the takeoff, where the hero's stars streamed past as the
-  atmosphere fell away. Phones and reduced motion keep the dome, without it.
+- **The journey begins with the Big Bang** (2026-11-07, owner's request): the hero is the void,
+  pitch black; scrolling sparks a first light that swells and bursts, so the flight home starts at
+  the very beginning (§3b). It replaced the takeoff, where the hero showed Amman's real sky and
+  its stars streamed past as the atmosphere fell away. A first version closed darkness in on that
+  sky; the owner wanted the void from the start and a light that appears, not one that remains.
+  Phones and reduced motion keep the dome, without it.
 - **Amman at its real time of day** (2026-11-07, owner's request): the ending used to be dawn
   whatever the hour; now it is Amman right now (§3c). Two choices made on the way. Stars and
   shooting stars leave once the sky is half daylight, because a blue sky can't show them; they
-  stay at night, dawn and dusk, and through the whole flight. And the hero keeps "tonight at
-  21:00" in daylight, because the journey takes off from the stars.
+  stay at night, dawn and dusk, and through the whole flight. And the dome's hero keeps "tonight
+  at 21:00" in daylight, so its sky always has stars.
 - **Content beside the route, not in the middle** (2026-10-12, owner's request): stops used to
   slide each plane to the center and peel it off; now their parts are fixed in space on the
   sides and pass out of view naturally, which reads as travel rather than as cards being shown.
