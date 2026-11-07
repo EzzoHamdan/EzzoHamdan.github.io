@@ -4,8 +4,9 @@
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
 > **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 how the sky works →
 > §4 change recipes → §5 failure messages → §6 sharp edges → §7 decisions.
-> **Reflects code as of 2026-10-12** (`galaxy-journey` branch: the galaxy journey, an experiment
-> built on the "sky over Amman" design, which stays on `sky-over-amman`).
+> **Reflects code as of 2026-11-07** (`amman-time` branch: the galaxy journey, the owner's chosen
+> design, plus Amman at its real time of day; `galaxy-journey` has the journey without it, and the
+> "sky over Amman" design stays on `sky-over-amman`).
 
 **What must not break:**
 
@@ -24,6 +25,7 @@
 | Production build to `dist/` | `npm run build` |
 | Check the build (links, JSON-LD, hreflang, language rule, drafts) | `npm run check` |
 | Preview the production build | `npm run preview`, then stop it with `npx astro preview stop` |
+| See Amman at another hour (§3c) | Add `?at=HH:MM` (Amman time), e.g. <http://localhost:4321/?at=21:00> |
 
 **Limits:**
 
@@ -87,7 +89,7 @@ nothing deploys from a feature branch.
 | Galaxy journey, page side: stops, scroll track, plane choreography, the camera, nav and focus | [`src/scripts/journey.ts`](src/scripts/journey.ts) |
 | Galaxy journey, sky side: star field, galaxies, warp, takeoff and landing | [`src/scripts/sky/journey.ts`](src/scripts/sky/journey.ts) (same worker) |
 | Galaxy portraits (Andromeda, Triangulum, Whirlpool, Sombrero, Milky Way) and the Sun's place in the Milky Way | [`src/scripts/sky/galaxies.ts`](src/scripts/sky/galaxies.ts) |
-| The globe at the end (Amman at the next sunrise) | [`src/scripts/sky/earth.ts`](src/scripts/sky/earth.ts) |
+| The globe at the end (lit for the moment the sky starts) | [`src/scripts/sky/earth.ts`](src/scripts/sky/earth.ts) |
 | Land map for the globe (generated, do not edit) | [`src/data/earth.json`](src/data/earth.json) ← [`scripts/make-earth-map.mjs`](scripts/make-earth-map.mjs) |
 | Sky: Amman, sidereal time, Sun, planets, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
 | Sky: catalog arrays, the camera and its lens, the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
@@ -95,7 +97,7 @@ nothing deploys from a feature branch.
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
-| Amman at first light (Temple of Hercules, King Abdullah I Mosque, the Abdali towers, the Roman Theatre, stone houses with their rooftops and balconies, trees behind them, minarets, beacons, pigeons, window lights) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
+| Amman at its real time of day (Temple of Hercules, King Abdullah I Mosque, the Abdali towers, the Roman Theatre, stone houses with their rooftops and balconies, trees behind them, minarets, beacons, pigeons, window lights; a color per time of day and the script that blends them, §3c) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
 | Blog schema and routes | [`src/content.config.ts`](src/content.config.ts), [`src/pages/blog/`](src/pages/blog/) |
 | Post-build checks | [`scripts/check-dist.mjs`](scripts/check-dist.mjs) |
@@ -137,7 +139,7 @@ sky's brightness and the shooting-star rate. Clicking empty sky makes a wish.
 | `experience` | The southern sky | "Looking south: …" |
 | `projects` | East, where new stars rise | The brightest planet in view, if any |
 | `education` | North, toward Polaris | "Looking north: Polaris" |
-| `contact` | Down to the eastern horizon at dawn (lens 0.12, near-rectilinear). The horizon follows the skyline's live position, so the camera lowers its gaze as the city rises into view | "Looking east, toward dawn over Amman" |
+| `contact` | Down to the eastern horizon over Amman (lens 0.12, near-rectilinear), its sky at Amman's real time of day (§3c). The horizon follows the skyline's live position, so the camera lowers its gaze as the city rises into view | "Amman right now, 20:47" |
 
 ```text
 Sky.astro ── scroll 0..1 + skyline's horizon y now ─► worker: eased progress (time constant ≈ 0.22 s)
@@ -217,8 +219,8 @@ The galaxies come **farthest first**, so the whole flight is a return to Earth (
 | `experience` | The Whirlpool and its companion NGC 5195 | 28 million | Magenta |
 | `projects` | The Triangulum galaxy | 2.7 million | Teal |
 | `education` | Andromeda, al-Sufi's "little cloud", with M32 and M110 | 2.5 million | Violet |
-| *(after the last stop)* | The homecoming, below | 100,000 light-years, 4 light-hours, 22,000 km | Space, then dawn |
-| `contact` | Dawn over Amman with shooting stars, some falling behind the skyline, as in the dome | (home) | Dawn |
+| *(after the last stop)* | The homecoming, below | 100,000 light-years, 4 light-hours, 22,000 km | Space, then Amman's sky |
+| `contact` | Amman at its real time of day (§3c): shooting stars while its sky is dark, some falling behind the skyline, as in the dome | (home) | Night, dawn, day or dusk |
 
 Each galaxy is far behind its section's title, grows as the section is read, and is passed close
 by on the way to the next title. The caption at the bottom names it and gives the distance from
@@ -247,7 +249,7 @@ never moves on its own.
 **Space never freezes.** While a stop holds, the camera keeps a slow drift (`sky/journey.ts`, `dz`,
 `dx`, `dy`, `breath`): near stars shift more than far ones and galaxies swell slightly. In the
 homecoming the planets start where they really are and then orbit (Mercury about every 24 s), and
-the marked places ripple. The hero's real sky and the dawn don't drift; they twinkle instead.
+the marked places ripple. The hero's real sky and Amman's don't drift; they twinkle instead.
 
 **The homecoming** (`sky/journey.ts::drawHomeBack`, `drawHomeFront`). After the last stop come
 three more stops with no text (`journey.ts::HOME_STAGES`), each holding like any stop. The camera
@@ -257,9 +259,9 @@ closing in on the next destination at the center of the screen:
 | Stage | What is on screen |
 | --- | --- |
 | `milkyway` | The Milky Way, centered on the Sun's place in the Orion Arm (`galaxies.ts::SUN_IN_MILKY_WAY`), marked with a brass ring |
-| `sun` | The Solar System, the planets where they really are at the next sunrise in Amman (`astro.ts::solarSystem`), orbits on a square-root scale so the inner planets aren't crowded into the Sun |
-| `earth` | The zoom moves from the Sun to Earth, which grows out of its dot into a globe centered on Amman, lit for the moment of the next sunrise (`astro.ts::nextSunrise`, `subsolarPoint`), so Amman sits on the dawn line, marked in brass |
-| landing | The globe grows a little and fades into the predawn sky as the contact section and the skyline scroll in |
+| `sun` | The Solar System, the planets where they really are right now (`astro.ts::solarSystem`), orbits on a square-root scale so the inner planets aren't crowded into the Sun |
+| `earth` | The zoom moves from the Sun to Earth, which grows out of its dot into a globe centered on Amman, lit for this moment (`astro.ts::subsolarPoint`), so Amman is on its real side of the line between night and day, marked in brass; the caption names that side (`journey.ts::EARTH_CAPTIONS`) |
+| landing | The globe grows a little and fades into Amman's sky as the contact section and the skyline scroll in |
 
 The Solar System is turned so the Sun lies on the same side of Earth as the daylight on the globe.
 
@@ -270,9 +272,10 @@ scroll ─► journey.ts: routeAt(scrollY) = position in stops (u)
             │       (F = 0.72 × viewport width, the same focal length the stars use)
             └─► "camera" message per frame: z = STRIDE·F·stairs(u), speed, u, landing, skyline y
                      ▼
-worker: sky/journey.ts ─► background (night → space → dawn) · tint per section
+worker: sky/journey.ts ─► background (night → space → Amman now) · tint per section
                        ─► galaxies (sprites painted once, galaxies.ts) · star field (real + generated,
-                          recycled) · warp streaks only when fast · shooting stars (hero, dawn)
+                          recycled) · warp streaks only when fast · shooting stars (hero, Amman
+                          while its sky is dark)
 ```
 
 #### 3b. (rendered)
@@ -286,7 +289,7 @@ flowchart LR
   eased --> cam[camera z = STRIDE · F · stairs u]
   place --> planes[(text planes)]
   cam -- "camera message" --> worker[sky/journey.ts]
-  worker --> sky[(stars, galaxies, warp, dawn)]
+  worker --> sky[(stars, galaxies, warp, Amman now)]
   planes -. "same focal length F" .- sky
 ```
 
@@ -319,6 +322,64 @@ top of `sky/earth.ts`. In `src/scripts/sky/journey.ts`:
 `DESTINATIONS` (galaxy, side, tint), the galaxy offsets in `placeGalaxies`, warp is `EXPOSURE`,
 `MAX_STREAK` and the `warp` line, and the sky colors are `NIGHT`, `SPACE`, `PREDAWN`, `DAWN`. Each
 galaxy's look is its branch in `galaxies.ts::paintGalaxy`.
+
+### 3c. Amman at its real time of day
+
+The last scene (`#contact`) shows Amman as it is right now (owner's request, 2026-11-07): night,
+dawn, day or dusk, from the Sun's real height there. Both modes do it. Only the hero keeps showing
+"tonight at 21:00" in daylight, because the journey takes off from the stars.
+
+`astro.ts::daylight(ms)` turns the Sun's altitude into four weights that sum to 1, so the scene
+drifts from one look to the next over an hour or so, as the real light does, instead of switching
+at set times:
+
+| Sun's altitude | Weights | What the scene shows |
+| --- | --- | --- |
+| below −16° | `night` 1 | A dark blue city with 40% of its windows lit and the far hills glittering; the Citadel, the theatre, the mosque and the church floodlit; green minaret lanterns; no pigeons. Stars and shooting stars |
+| −16° to −6° | `night` fading into twilight | Windows go out (or come on) a quarter at a time |
+| −6° to −2° | twilight 1: `dawn` while the Sun is in the east, `dusk` in the west | Dawn is the original first-light scene, the last lights going out as you scroll. Dusk is the limestone glowing pink, lights coming on |
+| −2° to 14° | twilight fading into `day` | The low sun's warm light |
+| above 14° | `day` 1 | A blue sky, deep at the top so the contact text reads; bright stone; pigeons. No stars or shooting stars |
+
+In November Amman's sun rises about 07:00 and sets about 17:40 (UTC+3 all year), so `?at=06:45`
+shows dawn and `?at=17:50` dusk.
+
+| Piece | Code | How it follows the time |
+| --- | --- | --- |
+| Sky, journey | `sky/journey.ts::DESCENT`, `HOME`, `STARLIGHT` | Colors, starlight and shooting-star rate blended by the weights, refreshed every 30 s |
+| Sky, dome | `sky/renderer.ts::APPROACH`, `AMMAN_SKY`, `STARLIGHT` | The same, as the last two stops of `atmosphere` |
+| City | `Skyline.astro`, "Time of day" | Every color is a CSS variable `--c<n>` with four versions (`versions`); the script blends them every minute |
+| Window lights | `Skyline.astro::lamp`, `.lamp` in `global.css` | Four tiers (`--t`) that come on as `--lamps` rises |
+| Wash over the sky | `.amman-now`, `--wash-*` | Blended by the same script |
+| Captions | `journey.ts::ammanNow`, `EARTH_CAPTIONS` | "Amman right now, 20:47"; the Earth stage names Amman's side of the planet |
+| Earth in the homecoming | `sky/journey.ts`, `moment` | Lit for the moment the sky starts |
+
+```text
+astro.ts::now() ──► daylight(): the Sun's altitude ──► weights { night, dawn, day, dusk }, sum 1
+  (real time, or ?at=HH:MM)                              │
+     │                                                   ├─► worker sky: colors, starlight, meteor rate
+     │                                                   ├─► Skyline script: --c<n> = Σ weight × version
+     │                                                   │     --lamps, --lights, --sun, --birds, --wash-*
+     └─► captions: "Amman right now, 20:47"              └─► data-look on #contact (day: brighter text)
+```
+
+```mermaid
+%%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
+flowchart LR
+  now([now, or ?at=HH:MM]) --> dl[daylight: the Sun's altitude]
+  dl --> w{{weights: night, dawn, day, dusk}}
+  w --> sky[worker sky: colors, starlight, shooting stars]
+  w --> city[Skyline script: color variables, lamps, lanterns, birds]
+  w --> wash[contact section: wash and data-look]
+  now --> cap[caption: Amman right now]
+```
+
+Read it as: one clock and one set of weights drive the sky, the city and the captions, so they
+never disagree about the hour. Nothing picks a look from the clock's hour directly.
+
+**Preview any hour** with `?at=HH:MM` (Amman time, today), e.g.
+<http://localhost:4321/?at=21:00>. The whole page follows it, hero caption included. The worker has
+no address of its own; the page passes it the clock's offset at init (`setClockOffset`).
 
 ## 4. Change recipes
 
@@ -354,6 +415,17 @@ else on screen.
 3. A scroll from top to bottom: text stays easy to read, and shooting stars build at the end.
 4. A narrow window (under 900 px) for the dome, and a wide one for the journey, including a fast
    flick across several stops: planes dim, stars streak briefly, and the stop you land on is crisp.
+
+**Change how Amman looks at a time of day:** the city's light is `LIGHTING` (multipliers and a
+lift toward white), `AIR` and `FIXED` in `Skyline.astro`; the sky's is the two tables in each
+renderer (`sky/journey.ts::DESCENT` and `HOME`, `sky/renderer.ts::APPROACH` and `AMMAN_SKY`, kept
+equal). Verify with `?at=21:00`, `06:45`, `10:00` and `17:50`, on a wide window and a narrow one,
+in both languages: the contact text must stay easy to read on every sky.
+
+**Add something to the skyline:** draw it with `rect`, `poly`, `line` and the rest, and its colors
+follow the time of day by themselves. A landmark Amman floodlights at night goes between
+`kind = 'flood'` and `kind = ''`. A new gradient stop or pattern color goes through `def()` in `D`,
+never a raw `stop-color` or `fill` attribute (§6).
 
 **Add a named star:** add `{ en, origin, ar }` to `starNames` in `src/data/sky-names.ts`, where
 `en` is the catalog's proper name. Regenerate the catalog with the commands at the top of
@@ -394,7 +466,7 @@ if the spelling differs (it's "Shedar", not "Schedar").
   the camera tilts, so checking the point straight ahead is not enough to keep ground off screen.
   `horizonTop` samples the whole visible horizon. Drawing the ground from points sorted by x
   instead of by azimuth once striped the whole sky.
-- ⚠ **The dawn shot follows the skyline live.** `Sky.astro::horizonNow` sends where the skyline's
+- ⚠ **The contact shot follows the skyline live.** `Sky.astro::horizonNow` sends where the skyline's
   horizon line (`data-horizon` in its viewBox) is on screen with every scroll update, and the
   contact shot is re-solved every frame to match. Two traps: the skyline uses
   `preserveAspectRatio="xMidYMax slice"`, so map viewBox y with its real scale, never as a
@@ -411,7 +483,18 @@ if the spelling differs (it's "Shedar", not "Schedar").
   (each row of houses is its own layer, back to front), and walls and hills go in a wall pass
   (`rect(…, true)`, `hill`) that paints before every detail; without it, a wall tone first used
   after some windows painted over them and left blank houses. Drawing each house as its own group
-  made the inline SVG about 185 KB; this way it is about 150 KB (39 KB gzipped) with full detail and the trees.
+  made the inline SVG about 185 KB; this way it is about 200 KB (48 KB gzipped) with full detail,
+  the trees and the time of day (about 3,200 night lamps, 5 KB gzipped, and the four palettes,
+  4 KB).
+- ⚠ **Every skyline color must go through the palette** (`Skyline.astro`, "Time of day"). Fills
+  drawn with `rect`, `poly`, `line` and `blob` do already; a raw `fill` or `stop-color` attribute
+  in the markup stays at first light all day and night. Colors are registered (`cv`, `def`) while
+  `drawn` and `D` are built in the frontmatter, before the `<svg>`'s own attributes are written;
+  a `cv()` called from the template would come too late for `firstLight` and `looks`. `kind` is a
+  mode: it applies to everything drawn until it is reset, and it is part of the fill's key, so lit
+  and unlit shapes never share a path.
+- **The lamps draw from their own random sequence** (`Skyline.astro::P`), like the trees, so
+  lighting more or fewer windows (`LAMPS`) never reshuffles the houses.
 - **Trees grow behind the houses, from their own random sequence** (`Skyline.astro::grove`, `R`).
   Each grove is its own layer, drawn just before the row of houses in front of it, so the houses
   hide the trunks and the crowns show over the roofs. The trees' random numbers are separate from
@@ -453,10 +536,10 @@ if the spelling differs (it's "Shedar", not "Schedar").
   commands are at its top; it can also write a PNG preview to check the coastlines). Natural Earth
   polygons wrap across the 180° meridian and Antarctica's wraps around the pole; the script
   unwraps them, and a naive fill once failed on exactly that.
-- **The homecoming is lit for the next sunrise, not for now.** The globe and the planets are
-  computed once when the sky starts (`sky/journey.ts`, `sunrise`), so the story always lands at
-  dawn whatever the hour. The globe is painted 48 rows a frame from then on, so it never stalls
-  the sky.
+- **The homecoming is lit for the moment the sky starts, not re-lit during a visit.** The globe
+  and the planets are computed once (`sky/journey.ts`, `moment`), and the globe is painted 48 rows
+  a frame from then on, so it never stalls the sky. Amman's sky and city do keep up: they refresh
+  every 30 s and every minute.
 - ⚠ **A part's position comes from `data-at`, not from the page's layout.** In the journey every
   `[data-part]` is absolutely centered in its stop's frame and moved by a transform; margins and
   grid placement on it do nothing there. Its width is set in the galaxy journey block of
@@ -491,7 +574,7 @@ if the spelling differs (it's "Shedar", not "Schedar").
   `[planned]` and needs no code change beyond `site.url` and a `public/CNAME` file.
 - **"Sky over Amman" redesign:** on `sky-over-amman`. The neon design is preserved on
   `astro-rebuild` as the fallback.
-- **The galaxy journey** (this branch, an experiment). The owner asked for a scroll that travels
+- **The galaxy journey** (chosen by the owner on 2026-10-12). The owner asked for a scroll that travels
   through space with tilted text that is part of the journey, after finding the dome's zooming and
   tilting between sections disorganized on fast scrolls. The camera only moves forward, every stop
   follows the same arrive, hold, depart path, and only one plane shows while reading. The dome
@@ -510,7 +593,12 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Amman lit, not in silhouette** (2026-10-13, owner's request with photographs): the dark
   skyline read as "wacky". The city is now limestone lit gold by the first sun from the east,
   with its real landmarks drawn from the photos, under a sky that still holds the night. The
-  Raghadan flag was removed the same day at the owner's request.
+  Raghadan flag was removed the same day at the owner's request. That look is now the dawn one.
+- **Amman at its real time of day** (2026-11-07, owner's request): the ending used to be dawn
+  whatever the hour; now it is Amman right now (§3c). Two choices made on the way. Stars and
+  shooting stars leave once the sky is half daylight, because a blue sky can't show them; they
+  stay at night, dawn and dusk, and through the whole flight. And the hero keeps "tonight at
+  21:00" in daylight, because the journey takes off from the stars.
 - **Content beside the route, not in the middle** (2026-10-12, owner's request): stops used to
   slide each plane to the center and peel it off; now their parts are fixed in space on the
   sides and pass out of view naturally, which reads as travel rather than as cards being shown.
