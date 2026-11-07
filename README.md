@@ -266,7 +266,10 @@ any other stop.
 > drawn where the camera looks (`cx`, `cy`), so it lines up with the title that follows. Nothing
 > else is drawn in the void: no stars, no shooting stars, and clicks make no wishes there. The
 > journey has no hero caption (`.journey .sky-caption`); "The sky over Amman right now" belongs
-> to the dome.
+> to the dome. The page is black from its first paint (`.journey body`), and so are the header's
+> glass and the browser's theme color (`Base.astro`'s inline script): before, the midnight blue
+> showed for most of a second until the sky's first frame, and the header stayed blue over the
+> void.
 
 **The scroll cue** (`#scroll-cue`, owner's request). The first screen otherwise looks like a
 static page, so the hero ends with "Scroll to begin the journey" beside a line that a point of
