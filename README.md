@@ -201,7 +201,8 @@ Every `[data-stop]` element in `ProfilePage.astro` is a **stop**: the hero, each
 (`data-stop="title"`) and each block of content (`data-stop="panel"`). Stops are fixed to the
 screen and moved with CSS 3D transforms; the sections stay in the document only as the scroll
 track, so anchors, the header highlight, search engines and screen readers see the normal page.
-Every stop does the same three things:
+Every stop does the same three things (the first leg, from the hero to the first title, bends
+this rule for the beginning; see below):
 
 | Phase | Plane | Camera |
 | --- | --- | --- |
@@ -213,7 +214,7 @@ The galaxies come **farthest first**, so the whole flight is a return to Earth (
 
 | Section | Passes (`sky/journey.ts::DESTINATIONS`) | From Earth (`journey.ts::DISTANCE`) | Space tinted |
 | --- | --- | --- | --- |
-| `hero` | Takeoff: the real sky over Amman straight up; the stars stream past as the atmosphere falls away, and stop twinkling | (Amman) | Night over Amman |
+| `hero` | The real sky over Amman straight up; leaving it, the beginning (below): the sky closes to a singularity, the Big Bang, and a new universe grows out of it | (Amman), then "13.8 billion years ago" | Night over Amman, then black, then the blast's embers |
 | `about` | The Sombrero, its dust lane edge-on | 31 million light-years | Amber |
 | `experience` | The Whirlpool and its companion NGC 5195 | 28 million | Magenta |
 | `projects` | The Triangulum galaxy | 2.7 million | Teal |
@@ -225,6 +226,44 @@ Each galaxy is far behind its section's title, grows as the section is read, and
 by on the way to the next title. The caption at the bottom names it and gives the distance from
 Earth, which counts down on a log scale between places (`journey.ts::distanceAt`, units from
 millions of light-years down to km in `formatDistance`) and holds still while a stop is read.
+
+**The beginning** (`sky/genesis.ts::GENESIS`, `sky/journey.ts::drawGenesis`, owner's request,
+2026-11-07). The first leg, from the hero to the "In short" title, tells how it all started, as
+positions along the route in stops:
+
+| From | To | On screen | Page |
+| --- | --- | --- | --- |
+| 0.2 | 0.5 (`close`) | Darkness closes in on the center of Amman's sky; the stars drift inward | The hero departs, gone by 0.5 |
+| 0.5 | 0.56 (`bang`) | The singularity: one white-hot point in total black, breathing if you stop | Caption: "The beginning, 13.8 billion years ago" |
+| 0.56 | 0.78 (`blast`) | The Big Bang: a flash from white to gold to ember red, a soft shock shell, sparks thrown out, the young universe's mottled afterglow cooling | Nothing on screen but the sky |
+| 0.56 | 0.88 (`born`) | A new universe of stars and galaxies grows out of the center to full size | "In short" gathers from 0.7 (`title`) and holds from 0.8 |
+
+```text
+u  0 ── 0.2 ─────── 0.5 ── 0.56 ─────── 0.7 ── 0.78 ── 0.8 ──── 0.88 ── 1
+   hero holds  │ darkness closes │ point │ blast (flash, shell, sparks, afterglow) │
+               │ hero departs    │       │      new universe grows ──────────────┤
+                                                 "In short" gathers ─► holds
+```
+
+```mermaid
+%%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
+flowchart LR
+  hero([hero holds]) --> close[darkness closes in, hero departs]
+  close --> point((singularity))
+  point --> blast[blast: flash, shell, sparks, afterglow]
+  blast --> grow[new universe grows]
+  grow --> title([In short gathers, then holds])
+```
+
+Read it as: the blast plays between the hero leaving and the title gathering, so no text is ever
+over the flash. The page side reads the same `GENESIS` positions (`journey.ts::render`, the
+`genesis` branch), which is why the hero departs faster and the first title gathers later than
+any other stop.
+
+> **Guaranteed:** the flash can only brighten at `FLASH_RISE` (3.2 a second), so scrolling back
+> and forth over it can't strobe. A jump through it (a link to a later section) shows only a faint
+> glimpse: the beginning steps aside in fast flight (`intact`), as galaxies dim. The singularity
+> is drawn where the camera looks (`cx`, `cy`), so it lines up with the title that follows.
 
 **The scroll cue** (`#scroll-cue`, owner's request). The first screen otherwise looks like a
 static page, so the hero ends with "Scroll to begin the journey" beside a line that a point of
@@ -535,6 +574,11 @@ if the spelling differs (it's "Shedar", not "Schedar").
   commands are at its top; it can also write a PNG preview to check the coastlines). Natural Earth
   polygons wrap across the 180° meridian and Antarctica's wraps around the pole; the script
   unwraps them, and a naive fill once failed on exactly that.
+- ⚠ **In the beginning the whole view is scaled around the center** (`sky/journey.ts`, `scale`), so
+  anything that fills "the screen" must fill what the screen would show at full size: the star
+  culling bounds (`drawStars`, `reach`) and the galaxy tint (`drawSpace`, `reach`). A plain
+  `fillRect(0, 0, w, h)` there showed as a shrinking rectangle. The afterglow's blotches stay
+  inside their texture for the same reason (`paintAfterglow`).
 - **The homecoming is lit for the moment the sky starts, not re-lit during a visit.** The globe
   and the planets are computed once (`sky/journey.ts`, `moment`), and the globe is painted 48 rows
   a frame from then on, so it never stalls the sky. Amman's sky and city do keep up: they refresh
@@ -600,6 +644,10 @@ if the spelling differs (it's "Shedar", not "Schedar").
   skyline read as "wacky". The city is now limestone lit gold by the first sun from the east,
   with its real landmarks drawn from the photos, under a sky that still holds the night. The
   Raghadan flag was removed the same day at the owner's request. That look is now the dawn one.
+- **The journey begins with the Big Bang** (2026-11-07, owner's request): the first leg now runs
+  from Amman's sky back to the singularity and out through the blast, so the flight home starts at
+  the very beginning (§3b). It replaced the takeoff, where the hero's stars streamed past as the
+  atmosphere fell away. Phones and reduced motion keep the dome, without it.
 - **Amman at its real time of day** (2026-11-07, owner's request): the ending used to be dawn
   whatever the hour; now it is Amman right now (§3c). Two choices made on the way. Stars and
   shooting stars leave once the sky is half daylight, because a blue sky can't show them; they
