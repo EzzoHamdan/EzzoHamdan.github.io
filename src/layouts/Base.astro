@@ -89,8 +89,11 @@ const ld = jsonLd && JSON.stringify(jsonLd).replace(/</g, '\\u003c');
         <script is:inline>
           // Decide before first paint, so the page never jumps from one layout to the other. Same
           // query as JOURNEY_QUERY in src/scripts/journey.ts.
-          if (matchMedia('(min-width: 900px) and (min-height: 560px) and (prefers-reduced-motion: no-preference)').matches)
+          if (matchMedia('(min-width: 900px) and (min-height: 560px) and (prefers-reduced-motion: no-preference)').matches) {
             document.documentElement.classList.add('journey');
+            // The journey opens in the void: the browser's own bar goes black with the page
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#000000');
+          }
         </script>
       )
     }

@@ -1207,6 +1207,17 @@ section h2 {
   scroll-behavior: auto;
 }
 
+/* The journey opens in the void (sky/genesis.ts), so the page is black from its very first paint,
+   before the sky has drawn a frame (the midnight blue showed for a moment first), and the header's
+   glass is black like it */
+.journey body {
+  background: #000;
+}
+
+.journey .site-header::before {
+  background: rgba(0, 0, 0, 0.82);
+}
+
 .journey main > section:not(#contact) {
   min-height: 0;
   padding-block: 0;
