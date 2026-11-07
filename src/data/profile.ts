@@ -53,8 +53,8 @@ export const person = {
   },
   /** The hero's opening lines, in the first person like the rest of the page (owner's choice). */
   intro: {
-    en: "I'm an AI engineer based in Amman, Jordan, and a 9XAI Fellow at Al Hussein Technical University (HTU). I work on how LLM models are adapted, combined and orchestrated, from letting one foundation model carry many specialized minds at once, to cohesive experiences across text, visuals, motion and video. Underneath it all is data: transforming vast, unruly collections into carefully curated corpora that models can genuinely learn from.",
-    ar: 'أنا مهندس ذكاء اصطناعي مقيم في عمّان، الأردن، وزميل في برنامج 9XAI في جامعة الحسين التقنية. أعمل على كيفية تكييف النماذج اللغوية الكبيرة ودمجها وتنسيق عملها، من تمكين نموذج تأسيسي واحد من حمل عقول متخصصة كثيرة في آنٍ واحد، إلى تجارب متماسكة تجمع النص والمرئيات والحركة والفيديو. وفي أساس ذلك كله البيانات: تحويل مجموعات ضخمة وغير منظّمة إلى مدوّنات منتقاة بعناية تتعلّم منها النماذج حقًّا.',
+    en: "I'm an AI engineer based in Amman, Jordan, and an AI Fellow at Al Hussein Technical University (HTU). I work on how LLM models are adapted, combined and orchestrated, from letting one foundation model carry many specialized minds at once, to cohesive experiences across text, visuals, motion and video. Underneath it all is data: transforming vast, unruly collections into carefully curated corpora that models can genuinely learn from.",
+    ar: 'أنا مهندس ذكاء اصطناعي مقيم في عمّان، الأردن، وزميل في الذكاء الاصطناعي بجامعة الحسين التقنية. أعمل على كيفية تكييف النماذج اللغوية الكبيرة ودمجها وتنسيق عملها، من تمكين نموذج تأسيسي واحد من حمل عقول متخصصة كثيرة في آنٍ واحد، إلى تجارب متماسكة تجمع النص والمرئيات والحركة والفيديو. وفي أساس ذلك كله البيانات: تحويل مجموعات ضخمة وغير منظّمة إلى مدوّنات منتقاة بعناية تتعلّم منها النماذج حقًّا.',
   },
   /** Short form for <meta name="description"> (aim for ≤ 160 characters). */
   description: {
