@@ -358,6 +358,16 @@ section h2 {
   margin-bottom: 2.5rem;
 }
 
+/* Justified, every line the same width (owner's request), with hyphenation so the evened-out
+   lines don't open wide gaps. Not on phones: a column that narrow justified into gaps and three
+   hyphenated words in one paragraph */
+@media (min-width: 700px) {
+  .hero-lede {
+    text-align: justify;
+    hyphens: auto;
+  }
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
