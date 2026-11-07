@@ -621,6 +621,9 @@ if the spelling differs (it's "Shedar", not "Schedar").
   the rest of the page. `person.summary` stays "Ezzaldeen Hamdan is…" on purpose, because it is the
   sentence search engines and AI assistants quote (JSON-LD `description`, `llms.txt`), and a
   first-person "I" means nothing out of context. Change a fact in both.
+- **The Arabic name is written joined: عزالدين حمدان** (2026-11-07, owner's choice), not the more
+  common spaced عز الدين. It lives only in `profile.ts` (`person.name`, `givenName` and the two
+  Arabic descriptions); the Arabic preview card in `public/og/ar.png` already shows it joined.
 - **No photo** anywhere on the site (owner's choice). Social previews use the typographic cards in
   `public/og/`.
 - **Root user site.** The repo was renamed from `portfolio` to `EzzoHamdan.github.io`, because
