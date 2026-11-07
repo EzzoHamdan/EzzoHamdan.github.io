@@ -23,6 +23,7 @@
  * same focal length as the CSS perspective, so stars, galaxies and text move as one space.
  */
 import type { JourneyMessage } from './sky/journey';
+import { GENESIS } from './sky/genesis';
 import { ammanClock, daylight, mainLook, now, type Look } from './sky/astro';
 
 export const JOURNEY_QUERY = '(min-width: 900px) and (min-height: 560px) and (prefers-reduced-motion: no-preference)';
@@ -91,6 +92,7 @@ const CAPTIONS = {
     experience: 'The Whirlpool galaxy',
     projects: 'The Triangulum galaxy',
     education: 'Andromeda, al-Sufi’s “little cloud”',
+    genesis: 'The beginning',
     milkyway: 'The Milky Way, our galaxy',
     sun: 'The Solar System, in the Orion Arm',
   },
@@ -99,6 +101,7 @@ const CAPTIONS = {
     experience: 'مجرة الدوامة',
     projects: 'مجرة المثلث',
     education: 'المرأة المسلسلة، «اللطخة السحابية» عند الصوفي',
+    genesis: 'البداية',
     milkyway: 'درب التبانة، مجرّتنا',
     sun: 'المجموعة الشمسية، في ذراع الجبّار',
   },
@@ -463,6 +466,9 @@ export function startJourney() {
     const t = smooth(HOLD, 1 - HOLD, u - s0);
     const warp = smooth(1.2, 3.5, rate);
     const zP = panelZ(u);
+    // The first leg belongs to the beginning (sky/genesis.ts): the hero is gone before the
+    // singularity is alone, and the first title gathers only once the blast's flash has faded
+    const genesis = s0 === 0;
     stops.forEach((s, i) => {
       if (s.parts.length) {
         placeParts(s, i, zP, Math.abs(u - i) < 1.5, Math.abs(u - i) <= HOLD, warp);
@@ -470,8 +476,8 @@ export function startJourney() {
       }
       let a = 1;
       let b = 0;
-      if (i === s0) b = t;
-      else if (i === s0 + 1) a = t;
+      if (i === s0) b = genesis ? smooth(HOLD, GENESIS.close[1], u) : t;
+      else if (i === s0 + 1) a = genesis ? smooth(GENESIS.title, 1 - HOLD, u) : t;
       else if (i < s0) b = 1;
       else a = 0;
       const opacity = place(s, a, b, warp);
@@ -520,8 +526,17 @@ export function startJourney() {
     if (!viewCaption) return;
     const near = stops[Math.min(lastStop, Math.round(u))];
     const stage = Math.round(u) - lastStop - 1;
+    // Between the hero and the first title lies the beginning (sky/journey.ts::GENESIS)
     const key =
-      landing() > 0.35 ? 'home' : stage >= 0 ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)] : near.kind === 'hero' ? '' : near.section;
+      landing() > 0.35
+        ? 'home'
+        : stage >= 0
+          ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)]
+          : u > GENESIS.close[1] - 0.1 && u < GENESIS.title + 0.08
+            ? 'genesis'
+            : near.kind === 'hero'
+              ? ''
+              : near.section;
     // Over Amman the caption is a clock, so it is rewritten whenever its text changes, not only
     // when the place does
     if (key !== captionKey || key === 'home') {
@@ -536,8 +551,9 @@ export function startJourney() {
       viewCaption.hidden = !text;
     }
     // The distance from Earth counts down between places and holds while a stop is read
-    const ly = key === 'home' ? 0 : distanceAt(u);
-    const distance = ly > 0 ? formatDistance(ly, lang) : '';
+    const ly = key === 'home' || key === 'genesis' ? 0 : distanceAt(u);
+    const distance =
+      key === 'genesis' ? (lang === 'ar' ? 'قبل 13.8 مليار سنة' : '13.8 billion years ago') : ly > 0 ? formatDistance(ly, lang) : '';
     if (distance !== captionDistance.textContent) captionDistance.textContent = distance;
   }
 

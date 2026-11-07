@@ -9,6 +9,9 @@
  *   twinkling in space).
  * - The field: real and generated stars at depths up to FAR focal lengths, recycled endlessly, so
  *   the flight never runs out of stars.
+ * - The beginning (GENESIS, `drawGenesis`): on the way from the hero to the first title, Amman's sky
+ *   closes in to a single point, the moment before anything existed; then the Big Bang, and a new
+ *   universe of stars and galaxies expanding out of it, where the flight goes on.
  * - Galaxies: each section flies toward one (DESTINATIONS), farthest first so the whole flight is a
  *   return home, seen far away behind its title, growing as its content is read, and passed close
  *   by on the way to the next. Its color tints the space around it.
@@ -28,6 +31,7 @@ import { camera as skyCamera, starColor, starMag, stars } from './catalog';
 import { createGlobe } from './earth';
 import { createMeteors } from './meteors';
 import { drawMilkyWay } from './milky-way';
+import { GENESIS } from './genesis';
 import { GALAXY_RADIUS, paintGalaxy, SPRITE, SUN_IN_MILKY_WAY, type GalaxyKind } from './galaxies';
 
 export type JourneyMessage =
@@ -95,6 +99,18 @@ const ORBITER_LOOK: Record<string, { color: string; r: number }> = {
   jupiter: { color: '#e8cfa6', r: 4.4 },
   saturn: { color: '#e9d39a', r: 3.8 },
 };
+
+/** How fast the blast's flash may brighten, per second, so scrolling back and forth can't strobe. */
+const FLASH_RISE = 3.2;
+/** The blast's sparks: direction, speed (in half screen diagonals), width, brightness, color. */
+const SPARK_COLORS = ['#fffaf0', '#ffe2a8', '#ffb070', '#ff8a5c'];
+const SPARKS = Array.from({ length: 150 }, () => ({
+  angle: Math.random() * Math.PI * 2,
+  speed: 0.25 + 1.2 * Math.random() ** 1.5,
+  size: 0.8 + 1.6 * Math.random(),
+  bright: 0.4 + 0.6 * Math.random(),
+  color: Math.floor(Math.random() * SPARK_COLORS.length),
+}));
 
 // Sky colors, [top, bottom]: the night over Amman, open space
 const NIGHT = [[9, 13, 32], [30, 30, 72]];
@@ -178,6 +194,11 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   let reduced = false, visible = true, started = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(8, 14);
   let drawnKey = '';
+  // The beginning: the flash as shown (it may only brighten at FLASH_RISE), the singularity's glow,
+  // and the afterglow's mottled texture, made when first needed
+  let flash = 0;
+  const coreSprite = softSprite(64, '255,240,222', 0.08);
+  let afterglow: Canvas | undefined;
   // Amman's look right now, refreshed every half minute, and the colors and starlight it gives
   let light: Daylight = daylight(clockNow());
   let lightAt = -Infinity;
@@ -424,7 +445,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   /** How much a galaxy's section is the current one, for tinting space. */
   const presence = (g: Galaxy) => smooth(g.first - 1, g.first - 0.3, u) * (1 - smooth(g.last + 0.3, g.last + 1, u));
 
-  function drawSpace(space: number, fade: number) {
+  function drawSpace(space: number, fade: number, reach = 1) {
     // Paint at most one galaxy per frame, the first time each is needed
     let painted = false;
     for (const g of galaxies) {
@@ -449,7 +470,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       grad.addColorStop(0.5, `rgba(${g.tint.join(',')},${0.07 * k})`);
       grad.addColorStop(1, `rgba(${g.tint.join(',')},0)`);
       ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
+      // While the view is scaled down (the beginning), cover what the screen would show at full size
+      ctx.fillRect(cx - cx * reach, cy - cy * reach, w * reach, h * reach);
     }
 
     // Farthest first, so nearer galaxies lie over farther ones
@@ -473,8 +495,14 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  function drawStars(time: number, space: number, dim: number, twinkle: number) {
+  function drawStars(time: number, space: number, dim: number, twinkle: number, reach = 1) {
     const near = NEAR * F;
+    // How far off screen to keep stars: farther while the view is scaled down around the center
+    // (the beginning), so the shrunken field never shows a straight edge
+    const left = cx - (cx + 60) * reach;
+    const right = cx + (w - cx + 60) * reach;
+    const top = cy - (cy + 60) * reach;
+    const bottom = cy + (h - cy + 60) * reach;
     const span = (FAR - NEAR) * F;
     // Only a fast scroll warps: an ordinary move between stops runs at about 8 focal lengths a
     // second and barely streaks
@@ -488,7 +516,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       d += near;
       const x = cx + (F * (X[i] - dx)) / d;
       const y = cy + (F * (Y[i] - dy)) / d;
-      if (x < -60 || x > w + 60 || y < -60 || y > h + 60) continue;
+      if (x < left || x > right || y < top || y > bottom) continue;
       const m = M[i] + 5 * Math.log10(d / D0[i]);
       if (m > LIMIT) continue;
       // Generated stars appear as the atmosphere falls away; the hero shows only the real sky
@@ -545,8 +573,22 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const dt = Math.min(0.05, (now - last) / 1000 || 0);
     last = now;
     clock = now / 1000;
-    // Leaving the atmosphere over the first leg of the flight; landing back in it at the end
-    const air = 1 - smooth(0.05, 0.85, z / stride);
+    // The beginning (GENESIS), on the first leg only: darkness closing in, then the blast and the
+    // new universe growing out of the center (`scale`, 1 when nothing is happening)
+    const first = u < 1.2;
+    const closing = first && u < GENESIS.bang ? smooth(GENESIS.close[0], GENESIS.close[1], u) : 0;
+    const banged = first && u >= GENESIS.bang;
+    const blast = banged ? clamp((u - GENESIS.bang) / GENESIS.blast) : 0;
+    const grown = banged ? 1 - (1 - smooth(GENESIS.bang, GENESIS.born, u)) ** 3 : 1;
+    // A jump through it (a link to a later section) is too fast to watch: the beginning steps
+    // aside, as galaxies dim in fast flight
+    const intact = 1 - smooth(6 * F, 20 * F, Math.abs(speed));
+    const born = banged ? 1 - (1 - smooth(GENESIS.bang + 0.02, GENESIS.bang + 0.2, u)) * intact : 1;
+    const scale = 1 - (1 - (closing > 0 ? 1 - 0.45 * closing : 0.06 + 0.94 * grown)) * intact;
+    const genesis = first && u > GENESIS.close[0] - 0.05 && u < GENESIS.born + 0.04;
+    // Leaving the atmosphere over the first leg of the flight; landing back in it at the end. After
+    // the bang there is no atmosphere left: the new universe is open space
+    const air = banged ? 0 : 1 - smooth(0.05, 0.85, z / stride);
     const space = 1 - air;
     const pre = smooth(0, 0.6, end);
     const landed = smooth(0.4, 1, end);
@@ -574,7 +616,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const L = homeLevel(home);
     if (L > 0.3 && L < 2.5) orbitClock += dt;
 
-    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done || leaned;
+    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done || leaned || genesis;
     leaned = false;
     const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
     if (drift < 0.01 && !moving && key === drawnKey) return;
@@ -592,6 +634,14 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
+    // In the beginning the whole view shrinks toward the center, then grows out of it
+    const scaled = scale < 0.999;
+    if (scaled) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.translate(-cx, -cy);
+    }
     // The Milky Way as seen from Amman, left behind with the atmosphere
     if (air > 0.01) {
       ctx.globalAlpha = 0.9 * air;
@@ -599,12 +649,13 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       ctx.globalAlpha = 1;
     }
     // Galaxies and their color dim in a fast flight (a jump), so they never flash past
-    drawSpace(space, (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))));
+    drawSpace(space, born * (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))), 1 / scale);
     // Home fades into Amman's sky as the city comes into view; by day the stars go with it
     const homeFade = 1 - smooth(0.05, 0.45, end);
     drawHomeBack(L, homeFade);
-    drawStars(now / 1000, space, 1 - (1 - starlight) * landed, twinkle);
+    drawStars(now / 1000, space, born * (1 - (1 - starlight) * landed), twinkle, 1 / scale);
     drawHomeFront(L, homeFade);
+    if (scaled) ctx.restore();
 
     if (!reduced) {
       const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
@@ -626,6 +677,134 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       meteors.update(dt);
       meteors.draw(ctx);
     }
+    if (genesis) drawGenesis(closing, blast, scale, dt, intact);
+    else flash = 0;
+  }
+
+  /**
+   * The beginning, over everything else on the canvas: the afterglow of the young universe, the
+   * edge of the view (darkness closing in, then the new universe's reach), the singularity, and
+   * the blast's flash and shock ring. All centered where the camera looks.
+   */
+  function drawGenesis(closing: number, blast: number, scale: number, dt: number, strength: number) {
+    const reach = Math.hypot(w, h) / 2;
+    ctx.globalCompositeOperation = 'lighter';
+    // The afterglow: the young universe still glowing as it cools, mottled like the cosmic
+    // microwave background, growing with everything else
+    const glow = smooth(0.12, 0.3, blast) * (1 - smooth(0.4, 0.62, blast)) * 0.3 * strength;
+    if (glow > 0.01) {
+      afterglow ??= paintAfterglow();
+      const size = reach * 1.3 * scale;
+      ctx.globalAlpha = glow;
+      ctx.drawImage(afterglow, cx - size, cy - size * 0.62, size * 2, size * 1.24);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+    // The edge: darkness closing in on the center before the bang; after it, the new universe
+    // reaching out, which also hides where the shrunken star field ends
+    const edge = closing > 0 ? reach * 1.2 * (1 - closing) ** 1.3 : reach * (0.06 + 1.3 * scale);
+    if (edge < reach * 1.2) {
+      const dark = ctx.createRadialGradient(cx, cy, edge * 0.5, cx, cy, Math.max(edge, 1));
+      const c = closing > 0 ? '1,1,4' : '3,4,12';
+      dark.addColorStop(0, `rgba(${c},0)`);
+      dark.addColorStop(1, `rgba(${c},${strength})`);
+      ctx.fillStyle = dark;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+    // The singularity: one white-hot point in the dark, breathing while it waits
+    const point = (smooth(0.6, 0.95, closing) + (blast > 0 ? 1 - smooth(0, 0.06, blast) : 0)) * strength;
+    if (point > 0.01) {
+      const pulse = reduced ? 1 : 1 + 0.18 * Math.sin(clock * 2.2);
+      const g = 34 * pulse;
+      ctx.globalAlpha = Math.min(1, point);
+      ctx.drawImage(coreSprite, cx - g, cy - g, g * 2, g * 2);
+      ctx.fillStyle = '#fffbf4';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 1.9 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // The blast: a flash from the point, white to gold to ember red, and a shock ring racing out.
+    // The flash may only brighten at FLASH_RISE a second, however fast the scroll
+    const target = blast > 0 ? smooth(0, 0.1, blast) * (1 - smooth(0.1, 1, blast)) * strength : 0;
+    flash = target > flash ? Math.min(target, flash + dt * FLASH_RISE) : target;
+    if (flash > 0.005) {
+      const R = reach * (0.04 + 1.25 * (1 - (1 - blast) ** 3));
+      const bloom = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+      bloom.addColorStop(0, `rgba(255,252,246,${flash})`);
+      bloom.addColorStop(0.22, `rgba(255,228,180,${0.85 * flash})`);
+      bloom.addColorStop(0.5, `rgba(255,156,90,${0.42 * flash})`);
+      bloom.addColorStop(0.8, `rgba(190,70,50,${0.14 * flash})`);
+      bloom.addColorStop(1, 'rgba(120,30,40,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = bloom;
+      ctx.fillRect(0, 0, w, h);
+    }
+    // The shock: a soft shell of light racing out ahead of the flash
+    const shock = blast > 0 ? 0.4 * (1 - blast) * smooth(0, 0.04, blast) * Math.min(1, flash / Math.max(target, 0.01)) : 0;
+    if (shock > 0.01) {
+      const r = reach * 1.5 * (1 - (1 - blast) ** 2);
+      const shell = ctx.createRadialGradient(cx, cy, r * 0.82, cx, cy, r);
+      shell.addColorStop(0, 'rgba(255,214,170,0)');
+      shell.addColorStop(0.75, `rgba(255,232,206,${shock})`);
+      shell.addColorStop(1, 'rgba(255,232,206,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = shell;
+      ctx.fillRect(0, 0, w, h);
+    }
+    // Sparks: matter thrown out of the point, slowing as space grows, gone before the first title
+    // gathers (sparks are the one streak here, and never behind text)
+    const spark = blast > 0 ? (1 - blast) ** 1.5 * (1 - smooth(0.25, 0.45, blast)) * strength : 0;
+    if (spark > 0.01) {
+      const travel = 1 - (1 - blast) ** 2.2;
+      ctx.lineCap = 'round';
+      for (const p of SPARKS) {
+        const r = p.speed * reach * travel;
+        const tail = r * (1 - 0.16 * (1 - blast));
+        const cos = Math.cos(p.angle);
+        const sin = Math.sin(p.angle);
+        ctx.globalAlpha = spark * p.bright;
+        ctx.strokeStyle = SPARK_COLORS[p.color];
+        ctx.lineWidth = p.size;
+        ctx.beginPath();
+        ctx.moveTo(cx + cos * tail, cy + sin * tail);
+        ctx.lineTo(cx + cos * r, cy + sin * r);
+        ctx.stroke();
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The young universe's afterglow: overlapping soft blotches of ember light, thinning toward the
+   * edges so the texture never shows a border.
+   */
+  function paintAfterglow(): Canvas {
+    const W = 320;
+    const H = 200;
+    const c = makeCanvas(W, H);
+    const g = c.getContext('2d') as Ctx;
+    // Every blotch stays inside the canvas (center within 0.28 of it, radius under 0.18 of its
+    // height), or the stretched texture would show its straight edges
+    for (let i = 0; i < 90; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * 0.28;
+      const x = W / 2 + Math.cos(a) * d * W;
+      const y = H / 2 + Math.sin(a) * d * H;
+      const r = (0.08 + 0.1 * Math.random()) * H;
+      const v = Math.random();
+      const color = `${Math.round(220 + 35 * v)},${Math.round(90 + 90 * v)},${Math.round(50 + 50 * v)}`;
+      const blot = g.createRadialGradient(x, y, 0, x, y, r);
+      blot.addColorStop(0, `rgba(${color},${0.22 + 0.2 * Math.random()})`);
+      blot.addColorStop(1, `rgba(${color},0)`);
+      g.fillStyle = blot;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    return c;
   }
 
   function loop(now: number) {

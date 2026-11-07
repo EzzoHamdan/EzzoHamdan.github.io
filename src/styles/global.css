@@ -1313,6 +1313,8 @@ section h2 {
   inset: -40% -20%;
   z-index: -1;
   background: radial-gradient(closest-side, rgba(3, 4, 12, 0.55), rgba(3, 4, 12, 0) 100%);
+  /* Gathers with the letters (--a), so it never shows as a smudge before there are words to back */
+  opacity: calc(var(--a, 1) * var(--a, 1));
   pointer-events: none;
 }
 
