@@ -4,9 +4,8 @@
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
 > **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 how the sky works →
 > §4 change recipes → §5 failure messages → §6 sharp edges → §7 decisions.
-> **Reflects code as of 2026-11-07** (`amman-time` branch: the galaxy journey, the owner's chosen
-> design, plus Amman at its real time of day; `galaxy-journey` has the journey without it, and the
-> "sky over Amman" design stays on `sky-over-amman`).
+> **Reflects code as of 2026-11-07** (`main`, live from that day: the galaxy journey, the owner's
+> chosen design, with Amman at its real time of day).
 
 **What must not break:**
 
@@ -572,8 +571,10 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Root user site.** The repo was renamed from `portfolio` to `EzzoHamdan.github.io`, because
   `robots.txt`, the sitemap and `llms.txt` only work at the domain root. A custom domain is
   `[planned]` and needs no code change beyond `site.url` and a `public/CNAME` file.
-- **"Sky over Amman" redesign:** on `sky-over-amman`. The neon design is preserved on
-  `astro-rebuild` as the fallback.
+- **"Sky over Amman" redesign:** kept in the history as the commits before the galaxy journey
+  (`git log`); it is still the dome that phones and reduced motion see. The neon design before it
+  is the first Astro commits. Live on `main` since 2026-11-07, deployed by GitHub Actions; until
+  then Pages served the hand-written site from the branch.
 - **The galaxy journey** (chosen by the owner on 2026-10-12). The owner asked for a scroll that travels
   through space with tilted text that is part of the journey, after finding the dome's zooming and
   tilting between sections disorganized on fast scrolls. The camera only moves forward, every stop
