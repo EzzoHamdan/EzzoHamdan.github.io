@@ -36,10 +36,10 @@ export const site = {
 };
 
 export const person = {
-  name: { en: 'Ezzaldeen Hamdan', ar: 'عز الدين حمدان' },
+  name: { en: 'Ezzaldeen Hamdan', ar: 'عزالدين حمدان' },
   /** English-only nickname, used in English metadata. */
   alternateName: 'Ezzo Hamdan',
-  givenName: { en: 'Ezzaldeen', ar: 'عز الدين' },
+  givenName: { en: 'Ezzaldeen', ar: 'عزالدين' },
   familyName: { en: 'Hamdan', ar: 'حمدان' },
   role: { en: 'AI Engineer', ar: 'مهندس ذكاء اصطناعي' },
   location: { en: 'Amman, Jordan', ar: 'عمّان، الأردن' },
@@ -49,7 +49,7 @@ export const person = {
    */
   summary: {
     en: 'Ezzaldeen Hamdan is an AI engineer in Amman, Jordan, and a 9XAI Fellow at Al Hussein Technical University (HTU), building retrieval-augmented generation systems, data pipelines and machine learning models for production.',
-    ar: 'عز الدين حمدان مهندس ذكاء اصطناعي مقيم في عمّان، الأردن، وزميل في برنامج 9XAI في جامعة الحسين التقنية، يبني أنظمة التوليد المعزّز بالاسترجاع وخطوط معالجة البيانات ونماذج تعلّم الآلة الجاهزة للإنتاج.',
+    ar: 'عزالدين حمدان مهندس ذكاء اصطناعي مقيم في عمّان، الأردن، وزميل في برنامج 9XAI في جامعة الحسين التقنية، يبني أنظمة التوليد المعزّز بالاسترجاع وخطوط معالجة البيانات ونماذج تعلّم الآلة الجاهزة للإنتاج.',
   },
   /** The hero's opening lines, in the first person like the rest of the page (owner's choice). */
   intro: {
@@ -59,7 +59,7 @@ export const person = {
   /** Short form for <meta name="description"> (aim for ≤ 160 characters). */
   description: {
     en: 'Ezzaldeen Hamdan is an AI engineer in Amman, Jordan, and a 9XAI Fellow at HTU, building RAG systems, data pipelines and machine learning models.',
-    ar: 'عز الدين حمدان مهندس ذكاء اصطناعي في عمّان، الأردن، وزميل في برنامج 9XAI في جامعة الحسين التقنية، يبني أنظمة التوليد المعزّز بالاسترجاع وخطوط البيانات ونماذج تعلّم الآلة.',
+    ar: 'عزالدين حمدان مهندس ذكاء اصطناعي في عمّان، الأردن، وزميل في برنامج 9XAI في جامعة الحسين التقنية، يبني أنظمة التوليد المعزّز بالاسترجاع وخطوط البيانات ونماذج تعلّم الآلة.',
   },
   about: {
     en: [
