@@ -16,14 +16,14 @@
  *   happens between stops, never while a stop holds still for reading.
  * - Homecoming (`drawHome`): after the last stop, a powers-of-ten dive home, one stage per leg of
  *   scroll: the Milky Way, centered on where the Sun is in it; the Solar System, planets where they
- *   really are; Earth, turned to Amman at the moment of the next sunrise there, so Amman sits on
- *   the line between night and day. Then dawn over Amman with shooting stars, some falling behind
- *   the skyline.
+ *   really are; Earth, turned to Amman and lit for this moment, so Amman sits on its real side:
+ *   day, night or the line between. Then Amman itself at its real time of day (astro.ts::daylight):
+ *   night, dawn or dusk with shooting stars, some falling behind the skyline; a blue sky by day.
  *
  * The camera's position comes from the page every frame (`camera`), already eased, so the stars and
  * the text planes the page moves with CSS share one camera and one focal length.
  */
-import { nextSunrise, night, siderealTime, solarSystem } from './astro';
+import { daylight, LOOKS, now as clockNow, night, siderealTime, solarSystem, type Daylight, type Look } from './astro';
 import { camera as skyCamera, starColor, starMag, stars } from './catalog';
 import { createGlobe } from './earth';
 import { createMeteors } from './meteors';
@@ -39,6 +39,8 @@ export type JourneyMessage =
       height: number;
       dpr: number;
       reducedMotion: boolean;
+      /** The page clock's offset from real time (astro.ts::now). */
+      clockOffset: number;
     }
   | { type: 'resize'; width: number; height: number; dpr: number }
   /**
@@ -94,11 +96,25 @@ const ORBITER_LOOK: Record<string, { color: string; r: number }> = {
   saturn: { color: '#e9d39a', r: 3.8 },
 };
 
-// Sky colors, [top, bottom]: the night over Amman, open space, the hour before dawn, dawn
+// Sky colors, [top, bottom]: the night over Amman, open space
 const NIGHT = [[9, 13, 32], [30, 30, 72]];
 const SPACE = [[3, 4, 12], [7, 9, 22]];
-const PREDAWN = [[10, 14, 34], [58, 40, 74]];
-const DAWN = [[16, 24, 56], [118, 74, 70]];
+// Coming home, by Amman's look right now (astro.ts::daylight): descending through the air, then
+// landed. By day the top stays a deep blue, so the contact text over it reads as well as at night
+const DESCENT: Record<Look, number[][]> = {
+  night: [[8, 12, 30], [32, 28, 62]],
+  dawn: [[10, 14, 34], [58, 40, 74]],
+  day: [[14, 30, 72], [52, 92, 152]],
+  dusk: [[12, 15, 38], [70, 42, 78]],
+};
+const HOME: Record<Look, number[][]> = {
+  night: [[9, 13, 34], [56, 44, 80]],
+  dawn: [[16, 24, 56], [118, 74, 70]],
+  day: [[30, 72, 140], [168, 200, 228]],
+  dusk: [[24, 32, 78], [168, 100, 116]],
+};
+/** How much starlight shows once home: most at night, none by day. */
+const STARLIGHT: Record<Look, number> = { night: 0.85, dawn: 0.45, day: 0, dusk: 0.5 };
 
 interface Galaxy {
   kind: GalaxyKind;
@@ -162,6 +178,12 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   let reduced = false, visible = true, started = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(8, 14);
   let drawnKey = '';
+  // Amman's look right now, refreshed every half minute, and the colors and starlight it gives
+  let light: Daylight = daylight(clockNow());
+  let lightAt = -Infinity;
+  let descent = DESCENT.dawn, homeSky = HOME.dawn, starlight = 0.45;
+  const blend = (table: Record<Look, number[][]>) =>
+    table.night.map((_, i) => [0, 1, 2].map((j) => LOOKS.reduce((sum, k) => sum + table[k][i][j] * light[k], 0)));
   // The camera never stops completely: a slow drift (depth dz, across dx and dy), so near stars
   // shift more than far ones and galaxies swell a little, even while a stop holds still
   let dz = 0, dx = 0, dy = 0, breath = 1, clock = 0, orbitClock = 0, lastDraw = 0;
@@ -243,13 +265,13 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   }
 
   // The homecoming, prepared once: the Milky Way's portrait, the planets and the globe, all for
-  // the moment of the next sunrise in Amman
-  const sunrise = nextSunrise(Date.now());
-  const globe = createGlobe(1024, sunrise, makeCanvas);
+  // this moment, so the Earth turns Amman's real side to the Sun: day, night or the line between
+  const moment = clockNow();
+  const globe = createGlobe(1024, moment, makeCanvas);
   const sunSprite = softSprite(64, '255,236,196', 0.12);
   let milkyWay: Canvas | undefined;
   const orbiters = (() => {
-    const all = solarSystem(sunrise);
+    const all = solarSystem(moment);
     const earth = all.find((p) => p.key === 'earth')!;
     // Turn the system so the Sun lies the same way from Earth as the daylight on the globe
     const toSun = Math.atan2(-earth.y, -earth.x);
@@ -385,7 +407,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       ctx.fillStyle = glow;
       ctx.fillRect(ex - er * 1.2, ey - er * 1.2, er * 2.4, er * 2.4);
       ctx.drawImage(globe.canvas, ex - er, ey - er, er * 2, er * 2);
-      // Amman, on the dawn line
+      // Amman, marked where it lies on the globe
       const mark = smooth(1.6, 1.9, L) * (1 - smooth(2.2, 2.5, L)) * fade;
       if (mark > 0.01) {
         ctx.globalAlpha = mark;
@@ -527,15 +549,23 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const air = 1 - smooth(0.05, 0.85, z / stride);
     const space = 1 - air;
     const pre = smooth(0, 0.6, end);
-    const dawn = smooth(0.4, 1, end);
-    const twinkle = reduced ? 0 : Math.max(air, dawn);
+    const landed = smooth(0.4, 1, end);
+    const twinkle = reduced ? 0 : Math.max(air, landed);
+    if (now - lightAt > 30_000) {
+      lightAt = now;
+      light = daylight(clockNow());
+      descent = blend(DESCENT);
+      homeSky = blend(HOME);
+      starlight = LOOKS.reduce((sum, k) => sum + STARLIGHT[k] * light[k], 0);
+      drawnKey = '';
+    }
     // Prepare the homecoming a little at a time, long before it is needed
     if (!globe.done) globe.step(48);
     if (!milkyWay && u > lastStop - 5 && galaxies.every((g) => g.sprite || g.z - z > (FAR + 4) * F)) {
       milkyWay = paintGalaxy('milkyway', makeCanvas);
     }
-    // The drift: strongest in open space, none in the hero's real sky or at dawn over Amman
-    const drift = reduced ? 0 : (1 - air) * (1 - dawn);
+    // The drift: strongest in open space, none in the hero's real sky or over Amman
+    const drift = reduced ? 0 : (1 - air) * (1 - landed);
     const T = 2 * Math.PI * clock;
     dz = drift * 0.1 * F * Math.sin(T / 16);
     dx = drift * (0.012 * w * Math.sin(T / 21) + 0.02 * w * leanX);
@@ -553,8 +583,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     drawnKey = key;
     lastDraw = now;
 
-    const top = mix(mix(mix(SPACE[0], NIGHT[0], air), PREDAWN[0], pre), DAWN[0], dawn);
-    const low = mix(mix(mix(SPACE[1], NIGHT[1], air), PREDAWN[1], pre), DAWN[1], dawn);
+    const top = mix(mix(mix(SPACE[0], NIGHT[0], air), descent[0], pre), homeSky[0], landed);
+    const low = mix(mix(mix(SPACE[1], NIGHT[1], air), descent[1], pre), homeSky[1], landed);
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, rgb(top));
     sky.addColorStop(0.55, rgb(mix(top, low, 0.25)));
@@ -570,25 +600,27 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     }
     // Galaxies and their color dim in a fast flight (a jump), so they never flash past
     drawSpace(space, (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))));
-    // Home fades into the dawn sky as the city comes into view
+    // Home fades into Amman's sky as the city comes into view; by day the stars go with it
     const homeFade = 1 - smooth(0.05, 0.45, end);
     drawHomeBack(L, homeFade);
-    drawStars(now / 1000, space, 1 - 0.55 * dawn, twinkle);
+    drawStars(now / 1000, space, 1 - (1 - starlight) * landed, twinkle);
     drawHomeFront(L, homeFade);
 
     if (!reduced) {
       const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
-      // Rare over the hero, none in deep space, more and more over Amman at dawn
-      const rate = 0.16 * area * air + (0.25 + 2.1 * end ** 1.5) * area * pre;
+      // Rare over the hero, none in deep space, more and more over Amman while its sky is dark;
+      // none once its sky is even half daylight
+      const dark = Math.max(0, 1 - 2 * light.day);
+      const rate = 0.16 * area * air + (0.25 + 2.1 * end ** 1.5) * area * pre * dark;
       const floor = end > 0.05 && Number.isFinite(horizonY) ? clamp(horizonY / h, 0.3, 0.95) : 0.92;
       spawnDebt += dt * rate;
       while (spawnDebt >= 1) {
-        meteors.spawn(w, h, false, floor, 0.5 * dawn);
+        meteors.spawn(w, h, false, floor, 0.5 * landed);
         spawnDebt -= 1;
       }
-      nextBolide -= dt * pre;
+      nextBolide -= dt * pre * dark;
       if (nextBolide <= 0) {
-        meteors.spawn(w, h, true, floor, 0.5 * dawn);
+        meteors.spawn(w, h, true, floor, 0.5 * landed);
         nextBolide = rand(7, 12);
       }
       meteors.update(dt);

@@ -23,6 +23,7 @@
  * same focal length as the CSS perspective, so stars, galaxies and text move as one space.
  */
 import type { JourneyMessage } from './sky/journey';
+import { ammanClock, daylight, mainLook, now, type Look } from './sky/astro';
 
 export const JOURNEY_QUERY = '(min-width: 900px) and (min-height: 560px) and (prefers-reduced-motion: no-preference)';
 
@@ -92,8 +93,6 @@ const CAPTIONS = {
     education: 'Andromeda, al-Sufi’s “little cloud”',
     milkyway: 'The Milky Way, our galaxy',
     sun: 'The Solar System, in the Orion Arm',
-    earth: 'Earth, as dawn reaches Amman',
-    dawn: 'Dawn over Amman',
   },
   ar: {
     about: 'مجرة القبعة المكسيكية',
@@ -102,10 +101,30 @@ const CAPTIONS = {
     education: 'المرأة المسلسلة، «اللطخة السحابية» عند الصوفي',
     milkyway: 'درب التبانة، مجرّتنا',
     sun: 'المجموعة الشمسية، في ذراع الجبّار',
-    earth: 'الأرض، والفجر يبلغ عمّان',
-    dawn: 'فجر عمّان',
   },
 };
+
+/** The Earth's caption names the side of it Amman is on right now. */
+const EARTH_CAPTIONS: Record<'en' | 'ar', Record<Look, string>> = {
+  en: {
+    night: 'Earth, night over Amman',
+    dawn: 'Earth, as dawn reaches Amman',
+    day: 'Earth, with Amman in daylight',
+    dusk: 'Earth, as dusk falls on Amman',
+  },
+  ar: {
+    night: 'الأرض، والليل يخيّم على عمّان',
+    dawn: 'الأرض، والفجر يبلغ عمّان',
+    day: 'الأرض، وعمّان في وضح النهار',
+    dusk: 'الأرض، والغروب يحلّ على عمّان',
+  },
+};
+
+/** The caption over Amman at the end of the page: its time right now, as the scene shows it. */
+export function ammanNow(lang: 'en' | 'ar') {
+  const clock = ammanClock(now());
+  return lang === 'ar' ? `عمّان الآن، ${clock}` : `Amman right now, ${clock}`;
+}
 
 /**
  * How far from Earth each place on the route is, in light-years. The galaxies come farthest
@@ -502,15 +521,22 @@ export function startJourney() {
     const near = stops[Math.min(lastStop, Math.round(u))];
     const stage = Math.round(u) - lastStop - 1;
     const key =
-      landing() > 0.35 ? 'dawn' : stage >= 0 ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)] : near.kind === 'hero' ? '' : near.section;
-    if (key !== captionKey) {
+      landing() > 0.35 ? 'home' : stage >= 0 ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)] : near.kind === 'hero' ? '' : near.section;
+    // Over Amman the caption is a clock, so it is rewritten whenever its text changes, not only
+    // when the place does
+    if (key !== captionKey || key === 'home') {
       captionKey = key;
-      const text = (CAPTIONS[lang] as Record<string, string>)[key] ?? '';
-      captionName.textContent = text;
+      const text =
+        key === 'home'
+          ? ammanNow(lang)
+          : key === 'earth'
+            ? EARTH_CAPTIONS[lang][mainLook(daylight(now()))]
+            : ((CAPTIONS[lang] as Record<string, string>)[key] ?? '');
+      if (text !== captionName.textContent) captionName.textContent = text;
       viewCaption.hidden = !text;
     }
     // The distance from Earth counts down between places and holds while a stop is read
-    const ly = key === 'dawn' ? 0 : distanceAt(u);
+    const ly = key === 'home' ? 0 : distanceAt(u);
     const distance = ly > 0 ? formatDistance(ly, lang) : '';
     if (distance !== captionDistance.textContent) captionDistance.textContent = distance;
   }

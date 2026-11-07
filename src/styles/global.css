@@ -838,21 +838,22 @@ section h2 {
 }
 
 /* ──────────────────────────────────────
-   Contact: dawn over Amman
+   Contact: Amman at its real time of day
    ────────────────────────────────────── */
-.dawn {
+.amman-now {
   /* The final scene owns the whole screen: with the footer, exactly one viewport */
   min-height: calc(100svh - 4.75rem);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   padding-bottom: 0;
+  /* A wash over the sky, set for the time of day by Skyline.astro's script (first light without it) */
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(26, 34, 80, 0.55) 45%,
-    rgba(240, 163, 94, 0.32) 88%,
-    rgba(240, 163, 94, 0.5) 100%
+    var(--wash-mid, rgba(26, 34, 80, 0.55)) 45%,
+    var(--wash-low, rgba(240, 163, 94, 0.32)) 88%,
+    var(--wash-floor, rgba(240, 163, 94, 0.5)) 100%
   );
 }
 
@@ -866,6 +867,11 @@ section h2 {
   font-size: var(--step-1);
   margin-bottom: 2rem;
   max-width: var(--measure);
+}
+
+/* Over a daylight sky the usual haze is too faint to read (data-look: Skyline.astro's script) */
+.amman-now[data-look='day'] .contact p {
+  color: #e6ecf7;
 }
 
 .skyline {
@@ -883,15 +889,32 @@ section h2 {
   view-timeline-axis: block;
 }
 
-/* Amman's minarets are lit green through the night */
+/* Amman's minarets are lit green through the night, and off by day */
 .skyline .green {
   fill: #8dffbf;
   filter: drop-shadow(0 0 4px rgba(80, 255, 150, 0.95));
+  opacity: var(--lights, 1);
+}
+
+/* Night: windows light up as it gets dark, a quarter of them at a time (--t is a lamp's tier,
+   --lamps how dark it is), mostly warm, some the cool white of LEDs */
+.skyline .lamp {
+  fill: #ffd089;
+  opacity: clamp(0, calc(var(--lamps, 0) * 4 - var(--t)), 0.9);
+}
+
+.skyline .lamp.cool {
+  fill: #dfe8ff;
 }
 
 .skyline .beacon {
   fill: #ff5a4f;
   filter: drop-shadow(0 0 2px rgba(255, 70, 60, 0.9));
+}
+
+/* The pigeons roost at night */
+.skyline .pigeons {
+  opacity: var(--birds, 1);
 }
 
 .skyline .pigeon {
@@ -950,12 +973,14 @@ section h2 {
 
 .skyline .lit {
   fill: var(--dawn);
-  opacity: 0.8;
+  /* Off by day (--lights, set with the time of day by Skyline.astro's script) */
+  opacity: calc(0.8 * var(--lights, 1));
 }
 
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .skyline .lit.fades {
+    /* Only at dawn do the last lights go out as the city comes into view */
+    .skyline.at-dawn .lit.fades {
       animation-name: lights-out;
       animation-timing-function: linear;
       animation-fill-mode: both;

@@ -6,8 +6,8 @@
   import type { SkyEvent, SkyMessage } from '../scripts/sky/renderer';
   import type { JourneyMessage } from '../scripts/sky/journey';
   import { planetNames, showers, starNames } from '../data/sky-names';
-  import { PLANETS, night } from '../scripts/sky/astro';
-  import { startJourney } from '../scripts/journey';
+  import { PLANETS, clockOffset, night } from '../scripts/sky/astro';
+  import { ammanNow, startJourney } from '../scripts/journey';
 
   const canvas = document.getElementById('sky') as HTMLCanvasElement;
   const starLabel = document.getElementById('star-label') as HTMLElement;
@@ -35,9 +35,7 @@
   function showView(e: Extract<SkyEvent, { type: 'view' }>) {
     const body = e.kind === 'planet' ? planetNames[PLANETS[e.index]] : e.kind === 'star' ? starNames[e.index] : null;
     const name = body ? (lang === 'ar' ? body.ar : body.en) : '';
-    viewCaption.textContent = e.dawn
-      ? lang === 'ar' ? 'نحو الشرق، حيث يطلع فجر عمّان' : 'Looking east, toward dawn over Amman'
-      : name ? `${directions[e.direction]}: ${name}` : directions[e.direction];
+    viewCaption.textContent = e.home ? ammanNow(lang) : name ? `${directions[e.direction]}: ${name}` : directions[e.direction];
   }
 
   function onSkyEvent(e: SkyEvent) {
@@ -84,7 +82,7 @@
 
   type Message = SkyMessage | JourneyMessage;
   async function connect(): Promise<(msg: Message) => void> {
-    const init = { ...size(), reducedMotion: motion.matches, calm, mode: journey ? 'journey' : 'dome' } as const;
+    const init = { ...size(), reducedMotion: motion.matches, calm, mode: journey ? 'journey' : 'dome', clockOffset: clockOffset() } as const;
     if ('transferControlToOffscreen' in canvas) {
       const worker = new Worker(new URL('../scripts/sky/worker.ts', import.meta.url), { type: 'module' });
       worker.onmessage = (event: MessageEvent<SkyEvent>) => onSkyEvent(event.data);

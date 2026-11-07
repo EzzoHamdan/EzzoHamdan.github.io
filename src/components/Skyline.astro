@@ -1,4 +1,6 @@
 ---
+import { LOOKS, type Look } from '../scripts/sky/astro';
+
 // Amman at first light, the last scene of the page: the low sun from the east (the left) lights
 // the limestone city warm and gold while the sky above still holds the night. Back to front:
 // hazy far hills blanketed in small houses, with a rim of light on their crest; the Abdali towers
@@ -46,10 +48,9 @@ const PANEL = '#2f4560';
 const WHITE = '#eeedf0';
 const DARK = '#2c2b34';
 const HAZE = [190, 160, 178];
-const tone = (hex: string, haze: number) => {
-  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return `rgb(${c.map((v, i) => Math.round(v + (HAZE[i] - v) * haze)).join(',')})`;
-};
+// A color seen through `haze` of the air, kept as a key (color~haze) and turned into one color
+// per time of day at the end (see "Time of day" below)
+const tone = (hex: string, haze: number) => (haze ? `${hex}~${haze}` : hex);
 
 // Terrain, in viewBox units (y grows downward)
 const far = (x: number) => 214 - 13 * Math.sin(x / 250 + 0.5) - 6 * Math.sin(x / 88 + 2) - 3 * Math.sin(x / 33);
@@ -61,6 +62,8 @@ const HORIZON_Y = Math.ceil(Math.max(...Array.from({ length: W + 1 }, (_, x) => 
 
 // Layers, painted in order. Within a layer, shapes of one fill share a path
 interface Light { x: number; y: number; w: number; h: number; out: number }
+/** A window lit at night: tier 0..3 is how dark it must be for it to come on; some are cool LEDs. */
+interface Lamp { x: number; y: number; w: number; h: number; tier: number; cool: boolean }
 interface Layer {
   /** Walls, painted before everything else in the layer, so no wall ever covers a window. */
   walls: Map<string, string[]>;
@@ -69,15 +72,23 @@ interface Layer {
   pens: Map<string, [number, number]>;
   strokes: { d: string; stroke: string; width: number }[];
   lights: Light[];
+  lamps: Lamp[];
   greens: { x: number; y: number; r: number }[];
   beacons: { x: number; y: number }[];
 }
 const layers: Layer[] = [];
 let L!: Layer;
 const layer = () => {
-  L = { walls: new Map(), paths: new Map(), pens: new Map(), strokes: [], lights: [], greens: [], beacons: [] };
+  L = { walls: new Map(), paths: new Map(), pens: new Map(), strokes: [], lights: [], lamps: [], greens: [], beacons: [] };
   layers.push(L);
 };
+// What lights a shape at night: nothing for the city, which goes dark; 'flood' for the landmarks
+// Amman floodlights (the Citadel, the theatre, the mosque, the church); 'dome' for the mosque's
+// turquoise, which stays turquoise under its lights; 'glow' for the towers' windows. Set around a
+// landmark's drawing; it becomes part of the fill's key, so lit and unlit shapes never share a path
+type Kind = '' | 'flood' | 'dome' | 'glow';
+let kind: Kind = '';
+const paint = (fill: string) => (kind && !fill.startsWith('url') ? `${fill}|${kind}` : fill);
 // Within a layer, shapes of one fill share a path, and paths paint in the order their fill was
 // first used. Walls go in a pass of their own first: a wall tone first used after some windows
 // were drawn would otherwise paint over them.
@@ -88,7 +99,8 @@ const add = (fill: string, d: string, wall = false) => {
   map.set(fill, list);
 };
 /** A path written by hand, in absolute coordinates: the fill's next shape starts afresh. */
-const addRaw = (fill: string, d: string) => {
+const addRaw = (raw: string, d: string) => {
+  const fill = paint(raw);
   add(fill, d);
   L.pens.delete(`false|${fill}`);
 };
@@ -98,12 +110,14 @@ const n = (v: number) => String(f(v)).replace(/^(-?)0\./, '$1.');
 // where the fill's previous shape ended, which keeps most numbers to one or two digits
 const moveTo = (pen: [number, number] | undefined, x: number, y: number) =>
   pen ? `m${n(f(x) - pen[0])} ${n(f(y) - pen[1])}` : `M${n(x)} ${n(y)}`;
-const rect = (fill: string, x: number, y: number, w: number, h: number, wall = false) => {
+const rect = (raw: string, x: number, y: number, w: number, h: number, wall = false) => {
+  const fill = paint(raw);
   const key = `${wall}|${fill}`;
   add(fill, `${moveTo(L.pens.get(key), x, y)}h${n(w)}v${n(h)}h${n(-w)}`, wall);
   L.pens.set(key, [f(x), f(f(y) + f(h))]);
 };
-const poly = (fill: string, pts: number[][], wall = false) => {
+const poly = (raw: string, pts: number[][], wall = false) => {
+  const fill = paint(raw);
   const key = `${wall}|${fill}`;
   let d = moveTo(L.pens.get(key), pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length; i++) d += `l${n(f(pts[i][0]) - f(pts[i - 1][0]))} ${n(f(pts[i][1]) - f(pts[i - 1][1]))}`;
@@ -112,7 +126,7 @@ const poly = (fill: string, pts: number[][], wall = false) => {
   L.pens.set(key, [f(last[0]), f(last[1])]);
 };
 const line = (stroke: string, width: number, pts: number[][]) =>
-  L.strokes.push({ d: `M${pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}`, stroke, width });
+  L.strokes.push({ d: `M${pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}`, stroke: paint(stroke), width });
 const sample = (fn: (x: number) => number, x0: number, x1: number, step = 8) => {
   const pts: number[][] = [];
   for (let x = x0; x < x1; x += step) pts.push([x, fn(x)]);
@@ -128,6 +142,14 @@ const arc = (cx: number, cy: number, rx: number, ry: number, n = 22) =>
     return [cx + rx * Math.cos(a), cy - ry * Math.sin(a)];
   });
 const dome = (fill: string, cx: number, cy: number, rx: number, ry: number) => poly(fill, arc(cx, cy, rx, ry));
+
+// Night lights draw from their own sequence too, so lighting windows never reshuffles the houses
+let lampSeed = 41;
+const P = () => (lampSeed = (lampSeed * 16807) % 2147483647) / 2147483647;
+/** Share of windows lit at night, when it is fully dark. */
+const LAMPS = 0.4;
+const lamp = (x: number, y: number, w: number, h: number) =>
+  L.lamps.push({ x: r1(x), y: r1(y), w: r1(w), h: r1(h), tier: Math.floor(P() * 4), cool: P() < 0.25 });
 
 interface HouseStyle {
   /** For the window pattern's id. */
@@ -158,7 +180,11 @@ function house(x: number, base: number, w: number, h: number, s: HouseStyle) {
   const run = h + 34 * k ** 2;
   rect(front, x, top, face, run, true);
   rect(tone(SIDE, s.haze), x + face, top + 0.8 * k, sideW, run, true);
-  if (k < 0.4) return;
+  if (k < 0.4) {
+    // Too far for windows: at night a light or two per house, so the far hills glitter
+    for (let i = 0; i < 2; i++) if (P() < 0.45) lamp(x + P() * Math.max(0, face - 1.2), top + 0.8 + P() * Math.max(0, h - 2), 1.2, 1);
+    return;
+  }
   const near = k >= 0.9;
   if (near) rect('url(#amman-courses)', x, top, face, h);
 
@@ -262,6 +288,12 @@ function house(x: number, base: number, w: number, h: number, s: HouseStyle) {
       }
     }
   }
+  // At night, many more: whole panes, from the lamps' own sequence
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (P() < LAMPS) lamp(x0 + c * stepX + 0.2 * k, y0 + r * stepY + 0.2 * k, ww - 0.4 * k, wh - 0.4 * k);
+    }
+  }
 }
 /** A window style's grid: one window per stepX by stepY cell, ww by wh, in the cell's corner. */
 function windowGrid(s: HouseStyle) {
@@ -291,7 +323,8 @@ function cypress(x: number, base: number, h: number, haze = 0) {
 let treeSeed = 97;
 const R = () => (treeSeed = (treeSeed * 16807) % 2147483647) / 2147483647;
 /** A leafy blob: an ellipse written as two arcs, a third of the markup of a polygon. */
-const blob = (fill: string, cx: number, cy: number, rx: number, ry: number) => {
+const blob = (raw: string, cx: number, cy: number, rx: number, ry: number) => {
+  const fill = paint(raw);
   const key = `false|${fill}`;
   add(fill, `${moveTo(L.pens.get(key), cx - rx, cy)}a${n(rx)} ${n(ry)} 0 1 0 ${n(2 * rx)} 0a${n(rx)} ${n(ry)} 0 1 0 ${n(-2 * rx)} 0`);
   L.pens.set(key, [f(cx - rx), f(cy)]);
@@ -387,6 +420,7 @@ rect('url(#amman-mist)', 0, 226, W, 50);
 
 // ── Abdali: towers in glass and stone ──
 layer();
+kind = 'glass';
 const glass = (x: number, top: number, w: number, base = 330) => {
   rect('url(#amman-glass)', x, top, w, base - top);
   rect('url(#amman-floors)', x, top, w, base - top);
@@ -423,10 +457,12 @@ rect('rgba(255, 214, 160, 0.7)', 1150, 238, 190, 1.4);
 rect('#efe2cf', 1292, 196, 34, 134);
 rect('#b7a8ae', 1326, 198, 7, 132);
 rect('url(#amman-offices)', 1296, 202, 27, 128);
+kind = '';
 
-// ── Citadel hill: the Temple of Hercules and the Umayyad dome ──
+// ── Citadel hill: the Temple of Hercules and the Umayyad dome, floodlit at night ──
 layer();
 hill('url(#amman-earth)', citadel, 30, 400);
+kind = 'flood';
 for (let x = 92; x < 330; x += between(9, 15)) rect(pick(['#ddc29c', '#cdb08f', '#e4cca6']), x, citadel(x) - 1, between(8, 13), between(5, 9));
 const column = (x: number, top: number, w = 14, base = 228) => {
   rect('#f1dcb5', x, top, w * 0.62, base - top);
@@ -467,9 +503,12 @@ rect('#f7e8cb', mosque - 90, 270, 180, 1.6);
 for (let i = 0; i < 9; i++) arch('#b9a08b', mosque - 82 + i * 19, 306, 9, 18);
 rect('#f0dfbe', mosque - 54, 236, 108, 36);
 rect('#cdb397', mosque + 38, 238, 16, 34);
+kind = 'dome';
 rect('#2f9fb1', mosque - 54, 236, 108, 7);
+kind = 'flood';
 for (let i = 0; i < 7; i++) arch('#8f7f86', mosque - 45 + i * 14, 266, 6, 14);
 dome('url(#amman-dome)', mosque, 238, 60, 54);
+kind = 'dome';
 rect('#1e8293', mosque - 60, 229, 120, 9);
 for (let x = mosque - 56; x < mosque + 56; x += 6) rect('#9fe1e6', x, 232, 2.4, 2.4);
 for (const k of [-0.62, -0.31, 0, 0.31, 0.62]) {
@@ -479,6 +518,7 @@ for (const k of [-0.62, -0.31, 0, 0.31, 0.62]) {
     return [mosque + k * 60 * Math.cos((t * Math.PI) / 2) * (1 - 0.08 * t), y];
   }));
 }
+kind = 'flood';
 dome('url(#amman-dome)', mosque - 50, 272, 16, 14);
 dome('url(#amman-dome)', mosque + 50, 272, 16, 14);
 line('#e8c47a', 1.4, [[mosque, 184], [mosque, 172]]);
@@ -495,8 +535,10 @@ for (const mx of [mosque - 88, mosque + 88]) {
   dome('#e9d5b0', mx, 128, 5, 7);
   line('#e8c47a', 1, [[mx, 121], [mx, 114]]);
 }
+kind = '';
 cypress(mosque - 108, 306, 70);
 cypress(mosque + 112, 306, 62);
+kind = 'flood';
 // The church: a bell tower with a red-tiled cap and a cross
 const church = 408;
 // Tall enough that the cross stands against the sky, above the far hills
@@ -506,6 +548,7 @@ arch('#7d6c74', church - 5, 208, 9, 16);
 dome('#b5553f', church, 182, 12, 10);
 line('#4a3b3c', 1.3, [[church, 172], [church, 156]]);
 line('#4a3b3c', 1.3, [[church - 4.5, 162], [church + 4.5, 162]]);
+kind = '';
 
 // ── The middle hills, stacked with stone houses ──
 layer();
@@ -538,6 +581,7 @@ layer();
 row(jofeh, 0, 620, [11, 20, 8, 15], 11, nearA);
 minaret(96, jofeh(96) + 4, 34, 0.14);
 layer();
+kind = 'flood';
 {
   const cx = 300;
   const cy = 418;
@@ -571,6 +615,7 @@ layer();
   rect('#f2dfbd', cx - 112, 404, 224, 1.6);
   for (let i = 0; i < 7; i++) arch('#8a7476', cx - 96 + i * 30, 420, 8, 12);
 }
+kind = '';
 // A cluster of the nearest houses in the corner west of the theatre, stopping short of its seats
 const corner = (x: number) => 350 + x * 0.22 - 3 * Math.sin(x / 23);
 grove(corner, 0, 80, 2, 0, 50, 64, 0.06, ['palm', 'pine']);
@@ -596,9 +641,140 @@ rect('url(#amman-street)', 0, 372, W, 48);
 
 // A flock of pigeons, scattered around the middle of their loop
 const pigeons = [[0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6], [-8, 4], [23, 11]];
+
+// ── Time of day ──
+// Everything above is Amman at first light. The page shows the city at its real time of day (the
+// script below, astro.ts::daylight), so every color also gets a night, a day and a dusk version:
+// the light on it changes (LIGHTING), and so does the air between it and the viewer (AIR, mixed in
+// by each color's haze). Each color is a CSS variable (--c<n>) on the <svg>, first light by
+// default; the script blends the four versions by the Sun's height over Amman.
+const AIR: Record<Look, number[]> = { night: [34, 38, 68], dawn: HAZE, day: [200, 214, 230], dusk: [176, 128, 152] };
+/** How a look lights a surface: a multiplier per channel, then a lift toward white. */
+const LIGHTING: Record<Look | 'flood' | 'dome' | 'glass', [number[], number]> = {
+  night: [[0.2, 0.23, 0.36], 0],
+  dawn: [[1, 1, 1], 0],
+  day: [[0.95, 0.99, 1.06], 0.06],
+  dusk: [[0.88, 0.72, 0.74], 0],
+  // At night: the landmarks under warm floodlights, the mosque's turquoise under its own, and the
+  // towers' glass holding a little of the city's glow, so they stand apart from the sky
+  flood: [[0.84, 0.7, 0.5], 0],
+  dome: [[0.5, 0.74, 0.86], 0],
+  glass: [[0.38, 0.46, 0.6], 0],
+};
+// Colors that don't follow the light but are replaced: the sky's glow, the mist and the rims of
+// first light along the crest and the towers' edges (alpha scales the original's)
+const FIXED: Record<string, Partial<Record<Look, number[]>>> = {
+  sun: { day: [255, 248, 232, 1], dusk: [255, 178, 166, 1], night: [0, 0, 0, 0] },
+  mist: { day: [232, 238, 246, 1], dusk: [234, 172, 174, 1], night: [58, 60, 100, 1] },
+  rim: { day: [255, 250, 240, 0.5], dusk: [255, 186, 170, 0.6], night: [0, 0, 0, 0] },
+};
+/** A tower window at night, mostly this warm light. */
+const WINDOW_GLOW = [255, 204, 138];
+const parse = (c: string) =>
+  c.startsWith('#') ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)).concat(1) : (c.match(/[\d.]+/g) ?? []).map(Number).concat(c.startsWith('rgba') ? [] : [1]);
+const mixRGB = (a: number[], b: number[], t: number) => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t);
+/** A color key (color, ~haze, |kind) in each look, as [r, g, b, alpha]. */
+function versions(key: string): Record<Look, number[]> {
+  const [color, k = ''] = key.split('|');
+  const [base, h] = color.split('~');
+  const haze = Number(h ?? 0);
+  const c = parse(base);
+  const fixed = FIXED[base.startsWith('rgba(255, 214, 160') ? 'rim' : k];
+  const out = {} as Record<Look, number[]>;
+  for (const look of LOOKS) {
+    let rgb: number[];
+    let alpha = c[3];
+    const replaced = look === 'dawn' ? undefined : fixed?.[look];
+    if (look === 'dawn') {
+      rgb = mixRGB(c, HAZE, haze);
+    } else if (replaced) {
+      rgb = replaced;
+      alpha *= replaced[3];
+    } else {
+      const [mul, lift] = LIGHTING[look === 'night' && (k === 'flood' || k === 'dome' || k === 'glass') ? k : look];
+      rgb = [0, 1, 2].map((i) => Math.min(255, c[i] * mul[i]));
+      rgb = rgb.map((v) => v + (255 - v) * lift);
+      if (look === 'night' && k === 'glow') rgb = mixRGB(rgb, WINDOW_GLOW, 0.7);
+      // The far hills' colors already hold first light's air; in other light, mix in that light's
+      rgb = mixRGB(rgb, AIR[look], k === 'far' ? 0.45 : haze);
+    }
+    out[look] = [...rgb.slice(0, 3).map((v) => Math.round(Math.max(0, Math.min(255, v)))), alpha];
+  }
+  return out;
+}
+const colors = new Map<string, number>();
+/** The CSS variable a color key paints with. */
+const cv = (key: string) => {
+  let i = colors.get(key);
+  if (i === undefined) colors.set(key, (i = colors.size));
+  return `var(--c${i})`;
+};
+const def = (color: string, k = '') => cv(k ? `${color}|${k}` : color);
+
+/** Night lamps of one tier and tone, as one path. */
+function lampPaths(lamps: Lamp[]) {
+  const groups = new Map<string, { tier: number; cool: boolean; d: string; pen?: number[] }>();
+  for (const m of lamps) {
+    const id = `${m.tier}${m.cool}`;
+    const g = groups.get(id) ?? { tier: m.tier, cool: m.cool, d: '' };
+    g.d += `${g.pen ? `m${n(m.x - g.pen[0])} ${n(m.y - g.pen[1])}` : `M${n(m.x)} ${n(m.y)}`}h${n(m.w)}v${n(m.h)}h${n(-m.w)}`;
+    g.pen = [m.x, r1(m.y + m.h)];
+    groups.set(id, g);
+  }
+  return [...groups.values()];
+}
+
+// Everything the markup paints, with its colors as variables (all registered before the <svg>'s
+// own attributes are written)
+const drawn = layers.map((l) => ({
+  fills: [...l.walls, ...l.paths].map(([fill, ds]) => ({
+    fill: fill.startsWith('url') ? fill : undefined,
+    style: fill.startsWith('url') ? undefined : `fill:${cv(fill)}`,
+    d: ds.join(''),
+  })),
+  strokes: l.strokes.map((st) => ({ d: st.d, style: `stroke:${cv(st.stroke)}`, width: st.width })),
+  lamps: lampPaths(l.lamps),
+  lights: l.lights,
+  greens: l.greens,
+  beacons: l.beacons,
+}));
+const D = {
+  sun: [def('#ffd8a2', 'sun'), def('#ffb98a', 'sun')],
+  far: [def('#b597ae', 'far'), def('#9e839f', 'far')],
+  mist: def('#f3cbbd', 'mist'),
+  glass: ['#7aa9bb', '#3f6a80', '#22394d'].map((c) => def(c, 'glass')),
+  cap: ['#9cc6d4', '#2c4d62'].map((c) => def(c, 'glass')),
+  dome: ['#bff2f1', '#46b8c6', '#1b6f82'].map((c) => def(c, 'dome')),
+  earth: ['#cfa98a', '#9f8074'].map((c) => def(c)),
+  tread: ['#f2ddb7', '#d6ba96'].map((c) => def(c, 'flood')),
+  riser: ['#cdb092', '#a98e7f'].map((c) => def(c, 'flood')),
+  flats: def('#7d8193', 'glow'),
+  offices: def('#808396', 'glow'),
+  windows: Object.fromEntries(
+    windowStyles.map((ws) => [ws.name, { pane: def(tone(WINDOW, ws.haze)), frame: def(tone(FRAME, ws.haze)), sill: def(tone(ROOF, ws.haze)) }]),
+  ),
+};
+const hex = (c: number[]) =>
+  `${c.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('')}${c[3] < 1 ? Math.round(c[3] * 255).toString(16).padStart(2, '0') : ''}`;
+const palette = [...colors.keys()].map(versions);
+const firstLight = palette.map((c, i) => `--c${i}:#${hex(c.dawn)}`).join(';');
+// The four versions for the script, in LOOKS order (astro.ts, shared with the script): eight hex
+// digits (RGBA) per color, the looks separated by spaces. Plain hex, not JSON, whose quotes the
+// attribute would escape
+const rgba8 = (c: number[]) => `${hex(c.slice(0, 3).concat(1))}${Math.round(c[3] * 255).toString(16).padStart(2, '0')}`;
+const looks = LOOKS.map((look) => palette.map((c) => rgba8(c[look])).join('')).join(' ');
 ---
 
-<svg class="skyline" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" data-horizon={HORIZON_Y} aria-hidden="true" focusable="false">
+<svg
+  class="skyline"
+  viewBox={`0 0 ${W} ${H}`}
+  preserveAspectRatio="xMidYMax slice"
+  data-horizon={HORIZON_Y}
+  data-looks={looks}
+  style={firstLight}
+  aria-hidden="true"
+  focusable="false"
+>
   <defs>
     <radialGradient
       id="amman-sun"
@@ -608,54 +784,54 @@ const pigeons = [[0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6]
       gradientUnits="userSpaceOnUse"
       gradientTransform={`translate(0 ${HORIZON_Y}) scale(1 0.32) translate(0 ${-HORIZON_Y})`}
     >
-      <stop offset="0" stop-color="#ffd8a2" stop-opacity="0.65"></stop>
-      <stop offset="0.45" stop-color="#ffb98a" stop-opacity="0.22"></stop>
-      <stop offset="1" stop-color="#ffb98a" stop-opacity="0"></stop>
+      <stop offset="0" style={`stop-color:${D.sun[0]}`} stop-opacity="0.65"></stop>
+      <stop offset="0.45" style={`stop-color:${D.sun[1]}`} stop-opacity="0.22"></stop>
+      <stop offset="1" style={`stop-color:${D.sun[1]}`} stop-opacity="0"></stop>
     </radialGradient>
     <linearGradient id="amman-far" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#b597ae"></stop>
-      <stop offset="0.5" stop-color="#9e839f"></stop>
+      <stop offset="0" style={`stop-color:${D.far[0]}`}></stop>
+      <stop offset="0.5" style={`stop-color:${D.far[1]}`}></stop>
     </linearGradient>
     <linearGradient id="amman-mist" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f3cbbd" stop-opacity="0"></stop>
-      <stop offset="0.5" stop-color="#f3cbbd" stop-opacity="0.3"></stop>
-      <stop offset="1" stop-color="#f3cbbd" stop-opacity="0"></stop>
+      <stop offset="0" style={`stop-color:${D.mist}`} stop-opacity="0"></stop>
+      <stop offset="0.5" style={`stop-color:${D.mist}`} stop-opacity="0.3"></stop>
+      <stop offset="1" style={`stop-color:${D.mist}`} stop-opacity="0"></stop>
     </linearGradient>
     <linearGradient id="amman-glass" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#7aa9bb"></stop>
-      <stop offset="0.35" stop-color="#3f6a80"></stop>
-      <stop offset="1" stop-color="#22394d"></stop>
+      <stop offset="0" style={`stop-color:${D.glass[0]}`}></stop>
+      <stop offset="0.35" style={`stop-color:${D.glass[1]}`}></stop>
+      <stop offset="1" style={`stop-color:${D.glass[2]}`}></stop>
     </linearGradient>
     <linearGradient id="amman-cylinder-cap" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#9cc6d4"></stop>
-      <stop offset="1" stop-color="#2c4d62"></stop>
+      <stop offset="0" style={`stop-color:${D.cap[0]}`}></stop>
+      <stop offset="1" style={`stop-color:${D.cap[1]}`}></stop>
     </linearGradient>
     <radialGradient id="amman-dome" cx="0.32" cy="0.25" r="0.85">
-      <stop offset="0" stop-color="#bff2f1"></stop>
-      <stop offset="0.5" stop-color="#46b8c6"></stop>
-      <stop offset="1" stop-color="#1b6f82"></stop>
+      <stop offset="0" style={`stop-color:${D.dome[0]}`}></stop>
+      <stop offset="0.5" style={`stop-color:${D.dome[1]}`}></stop>
+      <stop offset="1" style={`stop-color:${D.dome[2]}`}></stop>
     </radialGradient>
     <linearGradient id="amman-earth" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#cfa98a"></stop>
-      <stop offset="1" stop-color="#9f8074"></stop>
+      <stop offset="0" style={`stop-color:${D.earth[0]}`}></stop>
+      <stop offset="1" style={`stop-color:${D.earth[1]}`}></stop>
     </linearGradient>
     <linearGradient id="amman-tread" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#f2ddb7"></stop>
-      <stop offset="1" stop-color="#d6ba96"></stop>
+      <stop offset="0" style={`stop-color:${D.tread[0]}`}></stop>
+      <stop offset="1" style={`stop-color:${D.tread[1]}`}></stop>
     </linearGradient>
     <linearGradient id="amman-riser" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#cdb092"></stop>
-      <stop offset="1" stop-color="#a98e7f"></stop>
+      <stop offset="0" style={`stop-color:${D.riser[0]}`}></stop>
+      <stop offset="1" style={`stop-color:${D.riser[1]}`}></stop>
     </linearGradient>
     <!-- Repeating details on the towers: glass floor lines, window grids, stone floor lines -->
     <pattern id="amman-floors" width="10" height="5.5" patternUnits="userSpaceOnUse">
       <rect y="4.9" width="10" height="0.6" fill="rgba(14, 30, 46, 0.32)"></rect>
     </pattern>
     <pattern id="amman-flats" x="862" y="158" width="7" height="6.5" patternUnits="userSpaceOnUse">
-      <rect width="3.6" height="3.4" fill="#7d8193"></rect>
+      <rect width="3.6" height="3.4" style={`fill:${D.flats}`}></rect>
     </pattern>
     <pattern id="amman-offices" x="1296" y="202" width="6.5" height="7" patternUnits="userSpaceOnUse">
-      <rect width="3" height="3.6" fill="#808396"></rect>
+      <rect width="3" height="3.6" style={`fill:${D.offices}`}></rect>
     </pattern>
     <pattern id="amman-stone-floors" x="1014" y="104" width="10" height="7" patternUnits="userSpaceOnUse">
       <rect y="4" width="10" height="0.8" fill="rgba(110, 85, 70, 0.3)"></rect>
@@ -670,18 +846,18 @@ const pigeons = [[0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6]
         return (
           <Fragment>
             <pattern id={`amman-win-${s.name}`} width={stepX} height={stepY} patternUnits="userSpaceOnUse">
-              <rect width={ww} height={wh} fill={tone(WINDOW, s.haze)}></rect>
+              <rect width={ww} height={wh} style={`fill:${D.windows[s.name].pane}`}></rect>
             </pattern>
             <pattern id={`amman-win-${s.name}-framed`} width={stepX} height={stepY} patternUnits="userSpaceOnUse">
-              <rect width={ww} height={wh} fill={tone(FRAME, s.haze)}></rect>
-              <rect x={frame} y={frame} width={r1(ww - 2 * frame)} height={r1(wh - 2 * frame)} fill={tone(WINDOW, s.haze)}></rect>
+              <rect width={ww} height={wh} style={`fill:${D.windows[s.name].frame}`}></rect>
+              <rect x={frame} y={frame} width={r1(ww - 2 * frame)} height={r1(wh - 2 * frame)} style={`fill:${D.windows[s.name].pane}`}></rect>
             </pattern>
             <pattern id={`amman-win-${s.name}-arched`} width={stepX} height={stepY} patternUnits="userSpaceOnUse">
               <path
                 d={`M0 ${wh}V${r1(ww / 2)}A${r1(ww / 2)} ${r1(ww / 2)} 0 0 1 ${ww} ${r1(ww / 2)}V${wh}Z`}
-                fill={tone(WINDOW, s.haze)}
+                style={`fill:${D.windows[s.name].pane}`}
               ></path>
-              <rect x={r1(-0.3 * s.scale)} y={wh} width={r1(ww + 0.6 * s.scale)} height={r1(0.6 * s.scale)} fill={tone(ROOF, s.haze)}></rect>
+              <rect x={r1(-0.3 * s.scale)} y={wh} width={r1(ww + 0.6 * s.scale)} height={r1(0.6 * s.scale)} style={`fill:${D.windows[s.name].sill}`}></rect>
             </pattern>
           </Fragment>
         );
@@ -702,12 +878,13 @@ const pigeons = [[0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6]
     </linearGradient>
   </defs>
 
-  <rect width={W} height={HORIZON_Y + 40} fill="url(#amman-sun)"></rect>
+  <rect width={W} height={HORIZON_Y + 40} fill="url(#amman-sun)" style="opacity:var(--sun, 1)"></rect>
   {
-    layers.map((l) => (
+    drawn.map((l) => (
       <Fragment>
-        {[...l.walls, ...l.paths].map(([fill, ds]) => <path fill={fill} d={ds.join('')} />)}
-        {l.strokes.map((s) => <path d={s.d} fill="none" stroke={s.stroke} stroke-width={s.width} stroke-linecap="round" />)}
+        {l.fills.map((p) => <path fill={p.fill} style={p.style} d={p.d} />)}
+        {l.strokes.map((st) => <path d={st.d} fill="none" style={st.style} stroke-width={st.width} stroke-linecap="round" />)}
+        {l.lamps.map((g) => <path class:list={['lamp', { cool: g.cool }]} style={`--t:${g.tier}`} d={g.d} />)}
         {l.lights.map((w) => (
           <rect class:list={['lit', { fades: w.out < 70 }]} x={w.x} y={w.y} width={w.w} height={w.h} style={`--out:${w.out}%`} />
         ))}
@@ -731,3 +908,51 @@ const pigeons = [[0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6]
     </g>
   </g>
 </svg>
+
+<script>
+  // Amman at its real time of day: each color's four versions (data-looks) blended by how much of
+  // night, dawn, day and dusk it is in Amman now (astro.ts::daylight), with the windows, the
+  // lanterns, the birds and the sky's glow to match. Refreshed each minute, so a long visit sees
+  // the light change.
+  import { daylight, LOOKS, mainLook, now, type Look } from '../scripts/sky/astro';
+
+  // The scene's wash over the sky, [middle, low, bottom] as [r, g, b, alpha], by look
+  const WASH: Record<Look, number[][]> = {
+    night: [[8, 12, 34, 0.5], [60, 46, 96, 0.3], [80, 60, 110, 0.4]],
+    dawn: [[26, 34, 80, 0.55], [240, 163, 94, 0.32], [240, 163, 94, 0.5]],
+    day: [[30, 70, 140, 0.22], [230, 240, 250, 0.16], [240, 246, 252, 0.28]],
+    dusk: [[30, 30, 80, 0.5], [220, 130, 140, 0.3], [230, 140, 150, 0.45]],
+  };
+
+  const svg = document.querySelector<SVGSVGElement>('.skyline');
+  const scene = svg?.closest<HTMLElement>('section');
+  if (svg?.dataset.looks) {
+    // Eight hex digits (RGBA) per color, the looks in LOOKS order, separated by spaces
+    const palettes = svg.dataset.looks.split(' ').map((run) =>
+      Array.from({ length: run.length / 8 }, (_, i) => [0, 2, 4, 6].map((j) => parseInt(run.slice(i * 8 + j, i * 8 + j + 2), 16))),
+    );
+    const css = (c: number[], alpha = c[3] / 255) =>
+      `rgb(${Math.round(c[0])} ${Math.round(c[1])} ${Math.round(c[2])} / ${alpha.toFixed(3)})`;
+    const paint = () => {
+      const light = daylight(now());
+      const w = LOOKS.map((look) => light[look]);
+      const blend = (colors: number[][]) => [0, 1, 2, 3].map((j) => colors.reduce((sum, c, k) => sum + c[j] * w[k], 0));
+      palettes[0].forEach((_, i) => svg.style.setProperty(`--c${i}`, css(blend(palettes.map((p) => p[i])))));
+      // Windows light up as it gets dark; people are home at dusk, and a few are still up at dawn
+      svg.style.setProperty('--lamps', Math.max(light.night, 0.8 * light.dusk, 0.3 * light.dawn).toFixed(3));
+      svg.style.setProperty('--lights', (1 - light.day).toFixed(3));
+      svg.style.setProperty('--sun', (light.dawn + 0.5 * light.day + 0.45 * light.dusk).toFixed(3));
+      svg.style.setProperty('--birds', (1 - light.night).toFixed(3));
+      // At dawn the last lights go out as the city comes into view (global.css, lights-out)
+      svg.classList.toggle('at-dawn', mainLook(light) === 'dawn');
+      if (!scene) return;
+      scene.dataset.look = mainLook(light);
+      ['mid', 'low', 'floor'].forEach((name, i) => {
+        const c = blend(LOOKS.map((look) => WASH[look][i]));
+        scene.style.setProperty(`--wash-${name}`, css(c, c[3]));
+      });
+    };
+    paint();
+    setInterval(paint, 60_000);
+  }
+</script>

@@ -11,6 +11,31 @@ const SIN_LAT = Math.sin(AMMAN.lat * RAD);
 const COS_LAT = Math.cos(AMMAN.lat * RAD);
 const HOUR = 3_600_000;
 
+/**
+ * The page's clock: real time, unless the address previews an hour in Amman (`?at=09:30`), so any
+ * time of day can be seen without waiting for it. The worker has no address of its own; the page
+ * sends it the offset at init (`setClockOffset`).
+ */
+let offset = (() => {
+  const at = /^(\d{1,2}):(\d{2})$/.exec(new URLSearchParams(globalThis.location?.search ?? '').get('at') ?? '');
+  if (!at) return 0;
+  const real = Date.now();
+  const local = new Date(real + AMMAN.utcOffsetHours * HOUR);
+  const want = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), +at[1], +at[2]) - AMMAN.utcOffsetHours * HOUR;
+  return want - real;
+})();
+export const clockOffset = () => offset;
+export const setClockOffset = (ms: number) => {
+  offset = ms;
+};
+export const now = () => Date.now() + offset;
+
+/** "20:47": the time in Amman, for captions. */
+export function ammanClock(ms: number) {
+  const local = new Date(ms + AMMAN.utcOffsetHours * HOUR);
+  return `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}`;
+}
+
 const julianDay = (ms: number) => ms / 86_400_000 + 2440587.5;
 const wrap360 = (deg: number) => ((deg % 360) + 360) % 360;
 
@@ -57,6 +82,36 @@ export function sunAltitude(ms: number): number {
   return Math.asin(toHorizontal(s.ra, Math.sin(s.dec), Math.cos(s.dec), siderealTime(ms)).u) / RAD;
 }
 
+/** The four looks of Amman at the end of the page. */
+export const LOOKS = ['night', 'dawn', 'day', 'dusk'] as const;
+export type Look = (typeof LOOKS)[number];
+export type Daylight = Record<Look, number>;
+
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * How Amman looks at a moment, as weights of the four looks that sum to 1, from the Sun's real
+ * altitude: night below -16°, twilight from -16° to 14° (dawn while the Sun is in the east, dusk
+ * in the west; the low sun's warm light counts as twilight), full day above 14°. Gradual on purpose, as the real light is: the scene drifts
+ * from one look to the next over an hour or so instead of switching at set times.
+ */
+export function daylight(ms: number): Daylight {
+  const s = sun(ms);
+  const at = toHorizontal(s.ra, Math.sin(s.dec), Math.cos(s.dec), siderealTime(ms));
+  const alt = Math.asin(at.u) / RAD;
+  const day = smoothstep(-2, 14, alt);
+  const night = 1 - smoothstep(-16, -6, alt);
+  const twilight = Math.max(0, 1 - day - night);
+  const morning = at.e > 0;
+  return { night, dawn: morning ? twilight : 0, day, dusk: morning ? 0 : twilight };
+}
+
+/** The look with the most weight. */
+export const mainLook = (d: Daylight): Look => LOOKS.reduce((a, b) => (d[b] > d[a] ? b : a));
+
 // Galactic (l, b) to equatorial J2000, for drawing the Milky Way along the galactic plane
 const NGP_RA = 192.85948 * RAD;
 const NGP_DEC = 27.12825 * RAD;
@@ -79,13 +134,13 @@ export interface Night {
 }
 
 /** The moment the sky shows: now if it is dark in Amman, otherwise 21:00 tonight. */
-export function night(now = Date.now()): Night {
-  const dark = sunAltitude(now) < -8;
-  let time = now;
+export function night(at = now()): Night {
+  const dark = sunAltitude(at) < -8;
+  let time = at;
   if (!dark) {
-    const local = new Date(now + AMMAN.utcOffsetHours * HOUR);
+    const local = new Date(at + AMMAN.utcOffsetHours * HOUR);
     time = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 21) - AMMAN.utcOffsetHours * HOUR;
-    if (time < now) time += 24 * HOUR;
+    if (time < at) time += 24 * HOUR;
   }
   const date = new Date(time + AMMAN.utcOffsetHours * HOUR);
   const day = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -184,32 +239,6 @@ export const ORBITERS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn
 export function solarSystem(ms: number) {
   const T = (julianDay(ms) - 2451545.0) / 36525;
   return ORBITERS.map((key) => ({ key, a: ELEMENTS[key][0], ...heliocentric(key, T) }));
-}
-
-/** The next sunrise in Amman after `ms` (the Sun's upper limb at the horizon, with refraction). */
-export function nextSunrise(ms: number): number {
-  const RISE = -0.833;
-  const STEP = 10 * 60_000;
-  let t = ms;
-  let below = sunAltitude(t) < RISE;
-  for (let i = 0; i < (36 * HOUR) / STEP; i++) {
-    const next = t + STEP;
-    const nowBelow = sunAltitude(next) < RISE;
-    if (below && !nowBelow) {
-      // Bisect the crossing to well under a second
-      let lo = t;
-      let hi = next;
-      for (let k = 0; k < 24; k++) {
-        const mid = (lo + hi) / 2;
-        if (sunAltitude(mid) < RISE) lo = mid;
-        else hi = mid;
-      }
-      return hi;
-    }
-    below = nowBelow;
-    t = next;
-  }
-  return ms;
 }
 
 /** Where on Earth the Sun is straight overhead (radians, longitude east-positive). */

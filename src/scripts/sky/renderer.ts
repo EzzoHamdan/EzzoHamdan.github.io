@@ -10,10 +10,12 @@
  * - Time: the whole page spans six hours of sky rotation around Polaris.
  * - Camera: each page section is a shot (SHOTS). The camera holds while a section is read and
  *   glides to the next one between sections: straight up in the hero, south, east, north, and
- *   finally down to the eastern horizon at dawn, where the horizon lines up with the footer's
+ *   finally down to the eastern horizon over Amman, where the horizon lines up with the footer's
  *   Amman skyline.
- * - Atmosphere: dusk at the top, deep midnight while reading, dawn at the end.
- * - Shooting stars: rare at the top, more toward the end, some falling behind the city.
+ * - Atmosphere: dusk at the top, deep midnight while reading, then at the end Amman's sky at its
+ *   real time of day (astro.ts::daylight): night, dawn, a blue day or dusk.
+ * - Shooting stars: rare at the top, more toward the end while Amman's sky is dark, some falling
+ *   behind the city; none over a daylight end.
  * Everything is eased, and nothing ever leaves trails, so text stays crisp.
  *
  * Clicking empty sky makes a wish: a shooting star launches from that point.
@@ -21,7 +23,7 @@
  * Reduced motion: a still overhead sky (no rotation, camera moves, twinkle, shooting stars or
  * wishes). Calm (article pages): a dimmer, still overhead sky with rare shooting stars.
  */
-import { PLANETS, RAD, night, planets, siderealTime } from './astro';
+import { daylight, LOOKS, now as clockNow, PLANETS, RAD, night, planets, siderealTime, type Daylight, type Look } from './astro';
 import { camera, named, projectOne, projectVector, starColor, starMag, stars, type View } from './catalog';
 import { createMeteors } from './meteors';
 import { starNames } from '../../data/sky-names';
@@ -37,6 +39,8 @@ export type SkyMessage =
       height: number;
       dpr: number;
       reducedMotion: boolean;
+      /** The page clock's offset from real time (astro.ts::now). */
+      clockOffset: number;
       calm?: boolean;
     }
   | { type: 'resize'; width: number; height: number; dpr: number }
@@ -54,7 +58,7 @@ export type SkyEvent =
   /** A star (index into `starNames`) or planet (index into `PLANETS`) under the pointer; -1 hides. */
   | { type: 'hover'; kind: 'star' | 'planet'; index: number; x: number; y: number }
   /** What the camera is looking at: the named star or planet nearest the center, if any. */
-  | { type: 'view'; kind: 'star' | 'planet' | 'none'; index: number; direction: Direction; dawn: boolean };
+  | { type: 'view'; kind: 'star' | 'planet' | 'none'; index: number; direction: Direction; home: boolean };
 
 type Canvas = HTMLCanvasElement | OffscreenCanvas;
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -95,27 +99,45 @@ const SHOTS: Record<string, Shot> = {
   experience: { az: 200, alt: 55, fov: 70, lens: 1 }, // the southern sky
   projects: { az: 105, alt: 45, fov: 62, lens: 1 }, // east, where new stars rise
   education: { az: 0, alt: 35, fov: 56, lens: 1 }, // north, toward Polaris, the guiding star
-  // The eastern horizon at dawn over Amman, through a near-rectilinear lens so it lies flat
+  // The eastern horizon over Amman, through a near-rectilinear lens so it lies flat
   contact: { az: 95, alt: NaN, fov: 48, lens: 0.12 },
 };
 
 /**
  * The atmosphere along the page: [scroll position, sky color at the top, color at the bottom].
- * Dusk afterglow at the top, deep midnight while reading, then pre-dawn and dawn at the end.
+ * Dusk afterglow at the top, deep midnight while reading, then the last stretch toward Amman's
+ * sky as it is right now (APPROACH, then AMMAN, blended by astro.ts::daylight).
  */
 const ATMOSPHERE: [number, number[], number[]][] = [
   [0, [12, 18, 46], [44, 32, 82]],
   [0.12, [7, 11, 26], [22, 28, 64]],
   [0.75, [6, 9, 22], [18, 24, 56]],
-  [0.9, [10, 14, 34], [58, 40, 74]],
-  [1, [16, 24, 56], [118, 74, 70]],
 ];
+const APPROACH: Record<Look, number[][]> = {
+  night: [[8, 12, 30], [32, 28, 62]],
+  dawn: [[10, 14, 34], [58, 40, 74]],
+  day: [[14, 30, 72], [52, 92, 152]],
+  dusk: [[12, 15, 38], [70, 42, 78]],
+};
+const AMMAN_SKY: Record<Look, number[][]> = {
+  night: [[9, 13, 34], [56, 44, 80]],
+  dawn: [[16, 24, 56], [118, 74, 70]],
+  day: [[30, 72, 140], [168, 200, 228]],
+  dusk: [[24, 32, 78], [168, 100, 116]],
+};
+/** How much starlight is left over Amman at the end: most at night, none by day. */
+const STARLIGHT: Record<Look, number> = { night: 0.85, dawn: 0.35, day: 0, dusk: 0.4 };
+const blend = (table: Record<Look, number[][]>, light: Daylight) =>
+  table.night.map((_, i) => [0, 1, 2].map((j) => LOOKS.reduce((sum, k) => sum + table[k][i][j] * light[k], 0)));
 
-function atmosphere(p: number) {
+function atmosphere(p: number, light: Daylight) {
+  const [approachTop, approachLow] = blend(APPROACH, light);
+  const [ammanTop, ammanLow] = blend(AMMAN_SKY, light);
+  const stops: [number, number[], number[]][] = [...ATMOSPHERE, [0.9, approachTop, approachLow], [1, ammanTop, ammanLow]];
   let i = 1;
-  while (i < ATMOSPHERE.length - 1 && ATMOSPHERE[i][0] < p) i++;
-  const [p0, top0, low0] = ATMOSPHERE[i - 1];
-  const [p1, top1, low1] = ATMOSPHERE[i];
+  while (i < stops.length - 1 && stops[i][0] < p) i++;
+  const [p0, top0, low0] = stops[i - 1];
+  const [p1, top1, low1] = stops[i];
   const t = Math.min(1, Math.max(0, (p - p0) / (p1 - p0)));
   const mix = (a: number[], b: number[], k: number) => a.map((v, j) => Math.round(v + (b[j] - v) * k));
   const top = mix(top0, top1, t);
@@ -176,6 +198,9 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   let reduced = false, calm = false, visible = true, started = false;
   let moment = night();
   let planetPos = planets(moment.time);
+  // Amman's look at the end of the page, right now
+  let light = daylight(clockNow());
+  let starlight = LOOKS.reduce((sum, k) => sum + STARLIGHT[k] * light[k], 0);
   let refreshedAt = 0;
   let target = 0, progress = 0;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12), startedAt = 0;
@@ -197,6 +222,8 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   function refresh() {
     moment = night();
     planetPos = planets(moment.time);
+    light = daylight(clockNow());
+    starlight = LOOKS.reduce((sum, k) => sum + STARLIGHT[k] * light[k], 0);
     refreshedAt = Date.now();
     viewKey = '';
   }
@@ -417,7 +444,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
       }
     });
     const direction: Direction = shot.alt > 72 ? 'overhead' : WINDS[Math.round((((shot.az % 360) + 360) % 360) / 45) % 8];
-    const event = { type: 'view' as const, kind, index, direction, dawn: p > 0.96 };
+    const event = { type: 'view' as const, kind, index, direction, home: p > 0.96 };
     const key = JSON.stringify(event);
     if (key !== lastViewEvent) {
       lastViewEvent = key;
@@ -446,11 +473,12 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
       reproject();
     }
 
-    // Full sky behind the hero, calmer behind reading sections, fading into the footer dawn
-    const dim = calm ? 0.5 : (1 - 0.3 * smooth(0.04, 0.14, p)) * (1 - 0.65 * smooth(0.82, 1, p));
+    // Full sky behind the hero, calmer behind reading sections, fading into Amman's sky at the
+    // end, as far as its time of day leaves any starlight
+    const dim = calm ? 0.5 : (1 - 0.3 * smooth(0.04, 0.14, p)) * (1 - (1 - starlight) * smooth(0.82, 1, p));
 
-    // The atmosphere: dusk at the top of the page, midnight while reading, dawn at the end
-    const air = atmosphere(calm ? 0.4 : p);
+    // The atmosphere: dusk at the top of the page, midnight while reading, Amman now at the end
+    const air = atmosphere(calm ? 0.4 : p, light);
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, air.top);
     sky.addColorStop(0.55, air.mid);
@@ -484,8 +512,10 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
       const area = clamp((w * h) / (1440 * 900), 0.4, 1.5);
       const shower = moment.shower >= 0 ? 1.5 : 1;
       const end = smooth(0.8, 1, p);
-      // Rare at the top, building gently toward the end of the page, over Amman
-      const rate = calm ? 0.08 * area : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower;
+      // Rare at the top, building gently toward the end of the page, over Amman while its sky is
+      // dark, and gone once it is even half daylight
+      const dark = 1 - Math.min(1, 2 * light.day) * end;
+      const rate = calm ? 0.08 * area : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower * dark;
       // Above the skyline as it rises into view; at the end, about half fall behind the city
       floor = 0.9 - 0.3 * end;
       spawnDebt += dt * rate;
@@ -493,7 +523,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
         meteors.spawn(w, h, false, floor, 0.5 * end);
         spawnDebt -= 1;
       }
-      nextBolide -= dt;
+      nextBolide -= dt * dark;
       if (nextBolide <= 0 && !calm) {
         meteors.spawn(w, h, true, floor, 0.5 * end);
         nextBolide = p > 0.7 ? rand(7, 12) : rand(12, 20);
