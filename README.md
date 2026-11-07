@@ -566,6 +566,11 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Strictly monolingual pages** (owner's choice). The two languages are linked only through
   `hreflang` and the shared JSON-LD `@id` (`https://ezzohamdan.github.io/#person`), never in
   visible text.
+- **The page speaks in the first person; the metadata in the third** (2026-11-07, owner's
+  request: "as if it's me"). The hero's opening is `person.intro` ("I'm an AI engineer…"), like
+  the rest of the page. `person.summary` stays "Ezzaldeen Hamdan is…" on purpose, because it is the
+  sentence search engines and AI assistants quote (JSON-LD `description`, `llms.txt`), and a
+  first-person "I" means nothing out of context. Change a fact in both.
 - **No photo** anywhere on the site (owner's choice). Social previews use the typographic cards in
   `public/og/`.
 - **Root user site.** The repo was renamed from `portfolio` to `EzzoHamdan.github.io`, because
