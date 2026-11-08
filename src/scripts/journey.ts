@@ -76,8 +76,26 @@ const PACE = 0.95;
 const WEIGHT: Record<Kind, number> = { hero: 1.4, title: 0.65, panel: 1 };
 /** How long the camera takes to catch up with the scroll position, in seconds. */
 const LAG = 0.14;
-/** How fast the sky learns a jump has started or ended (seconds, `flying`). */
-const FLYING_EASE = 0.15;
+/**
+ * A menu jump that crosses the beginning or the homecoming slows down through them, so the Big
+ * Bang and the dive home play as they do when scrolled slowly: milliseconds of flight per unit of
+ * route there, against OPEN_MS across open space. In the first leg, the still ends (the hero
+ * holding before the light, the new universe already grown) go at STILL_MS. LAND_MS is the whole
+ * landing in Amman. The pace changes gradually between them (`paceAt`), so the camera never
+ * brakes or lurches, and the flight keeps an even speed with soft ends (`cruise`, RAMP of its
+ * time at each end).
+ */
+const PACED = { GENESIS_MS: 1900, STILL_MS: 400, HOME_MS: 900, OPEN_MS: 150, LAND_MS: 900, BASE_MS: 500, MAX_MS: 7000, RAMP: 0.2 } as const;
+
+/** An even cruise with soft ends: speed rises gently over RAMP of the time, holds, then eases off. */
+const cruise = (t: number) => {
+  const r = PACED.RAMP;
+  const top = 1 / (1 - r);
+  const ramp = (x: number) => 0.5 * top * (x - (r / Math.PI) * Math.sin((Math.PI * x) / r));
+  if (t < r) return ramp(t);
+  if (t > 1 - r) return 1 - ramp(1 - t);
+  return 0.5 * top * r + top * (t - r);
+};
 /** A little camera movement during a hold, so the stars answer every scroll. */
 const CREEP = 0.08;
 /**
@@ -493,7 +511,7 @@ export function startJourney() {
    * the destination arrives. Scrolling through every stop on the way flashed each plane past.
    */
   function renderFlight(f: Flight, t: number) {
-    const zP = f.p0 + (f.p1 - f.p0) * glide(t);
+    const zP = f.pace ? flightZ(eased) : f.p0 + (f.p1 - f.p0) * glide(t);
     stops.forEach((s, i) => {
       if (s.parts.length) {
         // Only the stop being left and the one being reached are out there during a jump
@@ -502,12 +520,25 @@ export function startJourney() {
       }
       let a = 0;
       let b = 1;
+      // A paced flight's time goes mostly to its set pieces, so its planes leave and arrive by
+      // distance along the route (within about a stop of either end), not by the clock
       if (i === f.to) {
-        a = smooth(0.5, 1, t);
+        a = f.pace ? 1 - smooth(0.3, 1, Math.abs(f.u1 - eased)) : smooth(0.5, 1, t);
         b = 0;
       } else if (i === f.from) {
         a = 1;
-        b = smooth(0, 0.4, t);
+        b = f.pace ? smooth(0.1, 0.6, Math.abs(eased - f.u0)) : smooth(0, 0.4, t);
+      }
+      // In the beginning the hero and the first title keep to the Big Bang's timing, whichever way
+      // the jump goes: the hero is gone before the bang, the title gathers after the flash
+      if (i === f.to || i === f.from) {
+        if (i === 0) {
+          a = 1;
+          b = smooth(HOLD, GENESIS.heroGone, eased);
+        } else if (i === 1 && eased < 1) {
+          a = smooth(GENESIS.title, 1 - HOLD, eased);
+          b = 0;
+        }
       }
       place(s, a, b, 0);
     });
@@ -536,9 +567,6 @@ export function startJourney() {
             : near.kind === 'hero'
               ? ''
               : near.section;
-    // A jump flies past the beginning and the homecoming without stopping, so their captions
-    // would only flicker by; the caption holds until the destination's
-    if (flight && (key === 'genesis' || (HOME_STAGES as readonly string[]).includes(key))) return;
     // Over Amman the caption is a clock, so it is rewritten whenever its text changes, not only
     // when the place does
     if (key !== captionKey || key === 'home') {
@@ -588,12 +616,19 @@ export function startJourney() {
     p1: number;
     from: number;
     to: number;
+    /** Route positions at both ends. */
+    u0: number;
+    u1: number;
     start: number;
     ms: number;
+    /**
+     * A paced flight (through the beginning or the homecoming): scroll positions sampled along the
+     * way, with the share of the flight's time spent reaching each (0..1). Absent for a flight
+     * across open space, which moves evenly.
+     */
+    pace?: { ys: Float64Array; at: Float64Array };
   }
   let flight: Flight | null = null;
-  /** 0..1, how much a jump is under way (eased); sent to the sky with the camera. */
-  let flying = 0;
   /** Smootherstep: starts and ends at rest, with no jolt in acceleration either. */
   const glide = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
 
@@ -603,9 +638,11 @@ export function startJourney() {
       type: 'camera',
       z,
       speed,
-      flying,
       u: eased,
-      home: stairs(eased) - lastStop,
+      // A paced flight zooms home without the stages' holds; the sky rewinds the beginning calmly
+      // on a flight back to the hero (no flash, no sparks)
+      home: (flight?.pace ? eased : stairs(eased)) - lastStop,
+      rewind: !!flight?.pace && flight.u1 < flight.u0,
       end: landing(),
       horizonY: Number.isFinite(horizonFromContact) ? top + horizonFromContact : NaN,
     });
@@ -614,19 +651,15 @@ export function startJourney() {
   function frame(now: number) {
     const dt = Math.min(0.05, (now - lastTime) / 1000 || 1 / 60);
     lastTime = now;
-    // How much a jump is under way, eased both ways, so the sky's set pieces step aside and come
-    // back without a cut, even when the reader's own scroll interrupts the jump
-    flying += ((flight ? 1 : 0) - flying) * (1 - Math.exp(-dt / FLYING_EASE));
-    if (!flight && flying < 0.005) flying = 0;
     if (flight) {
       // The page scrolls along with the jump, so the header, the address and the landing at the
       // end all stay true to where the camera is
       const t = clamp((now - flight.start) / flight.ms);
-      const k = glide(t);
-      const y = flight.y0 + (flight.y1 - flight.y0) * k;
+      const k = flight.pace ? cruise(t) : glide(t);
+      const y = flight.pace ? pacedY(flight.pace, k) : flight.y0 + (flight.y1 - flight.y0) * k;
       scrollTo({ top: y, behavior: 'instant' });
       eased = target = routeAt(y);
-      const z = flight.z0 + (flight.z1 - flight.z0) * k;
+      const z = flight.pace ? flightZ(eased) : flight.z0 + (flight.z1 - flight.z0) * k;
       const speed = (z - lastZ) / dt;
       lastZ = z;
       renderFlight(flight, t);
@@ -646,7 +679,7 @@ export function startJourney() {
     const speed = (z - lastZ) / dt;
     lastZ = z;
     render(eased, rate);
-    if (eased !== target || rate > 0.02 || flying > 0) {
+    if (eased !== target || rate > 0.02) {
       send(z, speed);
       requestAnimationFrame(frame);
     } else {
@@ -672,17 +705,78 @@ export function startJourney() {
   }
 
   /** Fly to a scroll position: one smooth jump if it is more than a stop away (see renderFlight). */
+  /** How far the landing in Amman has come at a scroll position (as `landing`, for any y). */
+  const landingAt = (y: number) => clamp(1 - (contactTop - y) / vh);
+
+  /**
+   * The camera for a paced flight: as cameraZ, but without its holds, so the flight passes stops
+   * and the homecoming's stages without pausing. The two agree at every stop.
+   */
+  const flightZ = (u: number) => STRIDE * F * (Math.min(u, lastStop + 1) + 0.15 * Math.max(0, u - lastStop - 1));
+
+  /** A paced flight's milliseconds per unit of route at a position, changing gradually (PACED). */
+  const paceAt = (u: number) =>
+    PACED.OPEN_MS +
+    (PACED.STILL_MS - PACED.OPEN_MS) * (1 - smooth(1, 1.8, u)) +
+    (PACED.GENESIS_MS - PACED.STILL_MS) * smooth(0.12, 0.3, u) * (1 - smooth(0.85, 0.95, u)) +
+    (PACED.HOME_MS - PACED.OPEN_MS) * smooth(lastStop - 0.3, lastStop + 0.5, u);
+
+  /**
+   * Plan a paced flight between two scroll positions: sample the way, give each step its time
+   * (PACED: slow through the beginning and the homecoming, fast across open space), and keep the
+   * running share of the total, so the flight can find where to be at any moment.
+   */
+  function planPace(y0: number, y1: number) {
+    const N = 600;
+    const ys = new Float64Array(N + 1);
+    const at = new Float64Array(N + 1);
+    let total = 0;
+    let u = routeAt(y0);
+    let land = landingAt(y0);
+    ys[0] = y0;
+    for (let k = 1; k <= N; k++) {
+      const y = y0 + ((y1 - y0) * k) / N;
+      const u2 = routeAt(y);
+      const land2 = landingAt(y);
+      const perU = paceAt((u + u2) / 2);
+      // A little time for every step, so the scroll past the end of the landing still moves
+      total += Math.abs(u2 - u) * perU + Math.abs(land2 - land) * PACED.LAND_MS + (Math.abs(y1 - y0) / N / vh) * 120;
+      ys[k] = y;
+      at[k] = total;
+      u = u2;
+      land = land2;
+    }
+    for (let k = 1; k <= N; k++) at[k] /= total || 1;
+    return { pace: { ys, at }, ms: Math.min(PACED.MAX_MS, PACED.BASE_MS + total) };
+  }
+
+  /** Where a paced flight is after `share` (0..1) of its time. */
+  function pacedY(pace: NonNullable<Flight['pace']>, share: number) {
+    const { ys, at } = pace;
+    let lo = 0;
+    let hi = at.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (at[mid] < share) lo = mid;
+      else hi = mid;
+    }
+    const span = at[hi] - at[lo];
+    return ys[lo] + (ys[hi] - ys[lo]) * (span > 0 ? (share - at[lo]) / span : 0);
+  }
+
   function flyTo(y: number) {
     const u1 = routeAt(y);
     const distance = Math.abs(u1 - eased);
     // A short hop between neighbouring stops scrolls there. Anything that starts or ends in the
     // beginning (the hero's leg) or the homecoming (past the last stop) always flies, however
-    // short: scrolled through, they replayed the Big Bang or the dive home at speed
-    const open = Math.min(u1, eased) >= 1 && Math.max(u1, eased) <= lastStop;
+    // short, and slows down through them: scrolled through, they replayed the Big Bang or the
+    // dive home at speed
+    const open = Math.min(u1, eased) >= 1 && Math.max(u1, eased) <= lastStop && landingAt(Math.max(scrollY, y)) === 0;
     if (distance <= 1.25 && open) {
       scrollTo({ top: y, behavior: 'smooth' });
       return;
     }
+    const paced = open ? null : planPace(scrollY, y);
     flight = {
       y0: scrollY,
       y1: y,
@@ -692,9 +786,13 @@ export function startJourney() {
       p1: panelZ(u1),
       from: Math.round(eased),
       to: Number.isInteger(u1) ? u1 : -1,
+      u0: eased,
+      u1,
       start: performance.now(),
-      // Longer jumps take a little longer, never more than two and a half seconds
-      ms: 1000 * clamp(0.8 + 0.17 * distance, 1.1, 2.4),
+      // Across open space, longer jumps take a little longer, never more than two and a half
+      // seconds; a paced flight takes the time its set pieces need (planPace)
+      ms: paced ? paced.ms : 1000 * clamp(0.8 + 0.17 * distance, 1.1, 2.4),
+      pace: paced?.pace,
     };
     wake();
   }

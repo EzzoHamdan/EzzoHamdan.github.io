@@ -1,6 +1,6 @@
 import {
   certifications,
-  education,
+  degrees,
   experience,
   orgs,
   person,
@@ -47,7 +47,8 @@ export function personNode(lang: Lang) {
       addressCountry: 'JO',
     },
     affiliation: current.flatMap((r) => r.orgs.map((k) => org(k, lang))),
-    alumniOf: org(education.org, lang),
+    // Every university, once each, even with two degrees from one
+    alumniOf: [...new Set(degrees.map((d) => d.org))].map((k) => org(k, lang)),
     knowsAbout: person.knowsAbout[lang],
     hasCredential: certifications.map((c) => ({
       '@type': 'EducationalOccupationalCredential',

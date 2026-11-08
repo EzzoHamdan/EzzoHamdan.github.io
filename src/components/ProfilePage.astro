@@ -8,7 +8,7 @@ import Skyline from './Skyline.astro';
 import Icon from './Icon.astro';
 import {
   certifications,
-  education,
+  degrees,
   experience,
   highlights,
   orgs,
@@ -43,6 +43,9 @@ const hidden = (role: (typeof experience)[number]) =>
   (role.groups ?? []).reduce((n, g) => n + Math.max(0, t(g.bullets, lang).length - SHOWN), 0);
 // Each organization's color, for the glow of its logo planet
 const BRAND: Record<string, string> = { '9xai': '#e5484d', z28: '#9b4dff', altibbi: '#2b6bff', iiab: '#3d8ad6', aau: '#c9a15b' };
+/** Logos drawn in light line art (AAU's gold) read on a deep midnight planet, not the pale one. */
+const DEEP = new Set(['aau']);
+const latestDegree = degrees[0];
 /*
  * In the galaxy journey a content stop is a few parts placed in space around the route
  * (journey.ts::placeParts): a card on the stop's side of the route and visuals on the other. A
@@ -126,8 +129,8 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
             <div>
               <dt>{s.facts.education}</dt>
               <dd>
-                <span class="fact-logos" aria-hidden="true"><Image src={education.logo} alt="" width={64} /></span>
-                {t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})
+                <span class="fact-logos" aria-hidden="true"><Image src={latestDegree.logo} alt="" width={64} /></span>
+                {t(latestDegree.degree, lang)}, {t(orgs[latestDegree.org].name, lang)} ({latestDegree.end ?? s.present})
               </dd>
             </div>
             <div data-part="visual" data-at="-0.17,-0.06,0.08"><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).join(comma)}</dd></div>
@@ -229,21 +232,31 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
     <section id="education" aria-labelledby="education-title">
       <div class="container">
         <h2 id="education-title" data-stop="title">{s.sections.education.title}</h2>
-        <div class="two-col" data-stop="panel">
-          <div class="role-mark" data-part="visual" data-at="0.36,-0.33,0.45">
-            <figure class="moon deep" style={`--brand:${BRAND.aau}`} aria-hidden="true">
-              <span class="planet"><Image src={education.logo} alt="" width={240} /></span>
-            </figure>
-          </div>
-          <article class="degree" data-part="card">
-            <h3>{t(education.degree, lang)}</h3>
-            <p class="role-org">{t(orgs[education.org].name, lang)}, {education.start} – {education.end}</p>
-            <p class="degree-badges">{education.badges.map((b) => t(b, lang)).join(comma)}</p>
-            <ul class="bullets">
-              {t(education.highlights, lang).map((b) => <li>{b}</li>)}
-            </ul>
-          </article>
-          <div class="certs-group" data-part="visual" data-at="-0.19,0.12,0.12">
+        <ol class="degrees">
+          {
+            degrees.map((d) => (
+              <li class="degree-stop" data-stop="panel">
+                {/* Like a role: the university's planet and the years on one side, the degree on the other */}
+                <div class="role-mark" data-part="visual" data-at="-0.27,-0.03,0.4">
+                  <figure class:list={['moon', { deep: DEEP.has(d.org) }]} style={`--brand:${BRAND[d.org]}`} aria-hidden="true">
+                    <span class="planet"><Image src={d.logo} alt="" width={240} /></span>
+                  </figure>
+                  <p class="role-when">{d.start} – {d.end ?? s.present}</p>
+                </div>
+                <article class="degree" data-part="card">
+                  <h3>{t(d.degree, lang)}</h3>
+                  <p class="role-org">{t(orgs[d.org].name, lang)}</p>
+                  <p class="degree-badges">{d.badges.map((b) => t(b, lang)).join(comma)}</p>
+                  <ul class="bullets">
+                    {t(d.highlights, lang).map((b) => <li>{b}</li>)}
+                  </ul>
+                </article>
+              </li>
+            ))
+          }
+        </ol>
+        <div class="certs-stop" data-stop="panel">
+          <div class="certs-group" data-part="visual" data-at="0.12,0,0">
             <h3 class="certs-title">{s.sections.certifications}</h3>
             <ul class="certs">
               {

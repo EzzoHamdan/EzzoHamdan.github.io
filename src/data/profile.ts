@@ -376,31 +376,52 @@ export const projects: Project[] = [
   },
 ];
 
-export const education = {
-  degree: { en: 'B.Sc. in Computer Science', ar: 'بكالوريوس علم الحاسوب' },
-  org: 'aau' as OrgKey,
-  logo: aau,
-  start: '2021',
-  end: '2025',
-  badges: [
-    { en: 'GPA 3.69/4.00 (Excellence)', ar: 'المعدل 3.69 من 4.00 (امتياز)' },
-    { en: '2nd in cohort', ar: 'الثاني على الدفعة' },
-  ],
-  highlights: {
-    en: [
-      'Ranked 2nd in the Computer Science cohort, one of three students with an Excellence GPA.',
-      'Awarded a merit-based partial academic scholarship.',
-      'Honoree graduation project: Uni-Archives.',
-      'Member of the AAU IT and Data Science & AI clubs.',
+export interface Degree {
+  id: string;
+  degree: T;
+  org: OrgKey;
+  logo: ImageMetadata;
+  start: string;
+  /** `null` while the degree is under way (shown as "Present"). */
+  end: string | null;
+  badges: T[];
+  highlights: T<string[]>;
+}
+
+/**
+ * Degrees, newest first. Each is its own stop in the Education section, like a role, and the
+ * newest is the "Education" fact in the about section. To add one: append its logo to
+ * src/assets/logos/, an entry to `orgs`, and an entry here; give its org a planet color in
+ * ProfilePage.astro's BRAND.
+ */
+export const degrees: Degree[] = [
+  {
+    id: 'aau-bsc',
+    degree: { en: 'B.Sc. in Computer Science', ar: 'بكالوريوس علم الحاسوب' },
+    org: 'aau',
+    logo: aau,
+    start: '2021',
+    end: '2025',
+    badges: [
+      { en: 'GPA 3.69/4.00 (Excellence)', ar: 'المعدل 3.69 من 4.00 (امتياز)' },
+      { en: '2nd in cohort', ar: 'الثاني على الدفعة' },
     ],
-    ar: [
-      'الثاني على دفعة علم الحاسوب، وواحد من ثلاثة طلاب بمعدل امتياز.',
-      'حاصل على منحة دراسية جزئية على أساس التفوق.',
-      'مشروع تخرج مكرَّم: Uni-Archives.',
-      'عضو في ناديي تقنية المعلومات وعلم البيانات والذكاء الاصطناعي في الجامعة.',
-    ],
+    highlights: {
+      en: [
+        'Ranked 2nd in the Computer Science cohort, one of three students with an Excellence GPA.',
+        'Awarded a merit-based partial academic scholarship.',
+        'Honoree graduation project: Uni-Archives.',
+        'Member of the AAU IT and Data Science & AI clubs.',
+      ],
+      ar: [
+        'الثاني على دفعة علم الحاسوب، وواحد من ثلاثة طلاب بمعدل امتياز.',
+        'حاصل على منحة دراسية جزئية على أساس التفوق.',
+        'مشروع تخرج مكرَّم: Uni-Archives.',
+        'عضو في ناديي تقنية المعلومات وعلم البيانات والذكاء الاصطناعي في الجامعة.',
+      ],
+    },
   },
-};
+];
 
 export const certifications: { name: T; org: OrgKey; date: YearMonth; note: T }[] = [
   {

@@ -50,13 +50,13 @@ export type JourneyMessage =
    */
   | { type: 'route'; focal: number; stride: number; cy: number; legs: { id: string; first: number; last: number }[] }
   /**
-   * The camera now: distance travelled, its speed (per second), how much a jump (a menu link) is
-   * under way (0..1, eased), the position along the route in
+   * The camera now: distance travelled, its speed (per second), the position along the route in
    * stops, the homecoming's progress in stages (0 at the last stop, 1 the Milky Way, 2 the Sun,
    * 3 the Earth; negative before), how far the final landing has come (0..1), and where the
-   * skyline's far hills are.
+   * skyline's far hills are. `rewind`: a menu jump is flying back to the hero, so the beginning
+   * plays backwards as a contraction, without the blast's flash and sparks.
    */
-  | { type: 'camera'; z: number; speed: number; flying: number; u: number; home: number; end: number; horizonY: number }
+  | { type: 'camera'; z: number; speed: number; u: number; home: number; end: number; horizonY: number; rewind: boolean }
   /** Where the mouse leans the view, -1..1 each way, eased by the page. */
   | { type: 'lean'; x: number; y: number }
   | { type: 'motion'; reduced: boolean }
@@ -186,7 +186,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
 
   let w = 0, h = 0, dpr = 1;
   let F = 1000, stride = 4000, cx = 0, cy = 0;
-  let z = 0, speed = 0, flying = 0, u = 0, home = -9, end = 0, horizonY = NaN, lastStop = 99;
+  let z = 0, speed = 0, u = 0, home = -9, end = 0, horizonY = NaN, lastStop = 99, rewind = false;
   let reduced = false, visible = true, started = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(8, 14);
   let drawnKey = '';
@@ -571,13 +571,10 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const banged = first && u >= GENESIS.bang;
     const blast = banged ? clamp((u - GENESIS.bang) / GENESIS.blast) : 0;
     const grown = banged ? 1 - (1 - smooth(GENESIS.bang, GENESIS.born, u)) ** 3 : 1;
-    // A jump (a menu link) is too fast to watch it: the beginning steps aside, as galaxies dim in
-    // fast flight
-    const intact = (1 - smooth(6 * F, 20 * F, Math.abs(speed))) * (1 - flying);
-    // The void: total before the bang, where the first light swells in it. A jump to or from the
-    // hero has no first light and no bang, so there the void fades over the whole first leg
-    // instead, with no cut
-    const voidness = (before ? 1 : 0) * (1 - flying) + (first ? 1 - smooth(0, 0.9, u) : 0) * flying;
+    // Only a reader's fast flick is too fast to watch it: then the beginning steps aside, as
+    // galaxies dim in fast flight. A menu jump slows down through it (journey.ts::flyTo), so it
+    // plays in full
+    const intact = 1 - smooth(6 * F, 20 * F, Math.abs(speed));
     const born = banged ? 1 - (1 - smooth(GENESIS.bang + 0.02, GENESIS.bang + 0.2, u)) * intact : 1;
     const scale = 1 - (1 - (0.06 + 0.94 * grown)) * intact;
     const genesis = first && u > GENESIS.glow[0] - 0.02 && u < GENESIS.born + 0.04;
@@ -610,14 +607,14 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
 
     const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done || leaned || genesis;
     leaned = false;
-    const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${flying.toFixed(3)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
+    const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
     if (drift < 0.01 && !moving && key === drawnKey) return;
     // While only the slow drift moves, half the frame rate is plenty
     if (!moving && key === drawnKey && now - lastDraw < 30) return;
     drawnKey = key;
     lastDraw = now;
 
-    if (voidness > 0.999) {
+    if (before) {
       // The void: nothing yet, not even darkness's color
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, w, h);
@@ -643,9 +640,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     }
     // Galaxies and their color dim in a fast flight (a jump), so they never flash past
     drawSpace(born * (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))), 1 / scale);
-    // Home fades into Amman's sky as the city comes into view; by day the stars go with it. A jump
-    // past it doesn't stop for the dive home: it would rush through four zoom levels in a second
-    const homeFade = (1 - smooth(0.05, 0.45, end)) * (1 - flying);
+    // Home fades into Amman's sky as the city comes into view; by day the stars go with it
+    const homeFade = 1 - smooth(0.05, 0.45, end);
     drawHomeBack(L, homeFade);
     drawStars(now / 1000, born * (1 - (1 - starlight) * landed), twinkle, 1 / scale);
     drawHomeFront(L, homeFade);
@@ -672,11 +668,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       meteors.update(dt);
       meteors.draw(ctx, DAY_METEOR_DIM + (1 - DAY_METEOR_DIM) * dark);
     }
-    if (voidness > 0.001) {
-      ctx.fillStyle = `rgba(0,0,0,${voidness.toFixed(3)})`;
-      ctx.fillRect(0, 0, w, h);
-    }
-    if (genesis) drawGenesis(before ? glow : 0, blast, scale, dt, intact);
+    if (genesis) drawGenesis(0, blast, scale, dt, intact);
     else flash = 0;
   }
 
@@ -742,7 +734,9 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
 
     // The blast: a flash from the point, white to gold to ember red, and a shock ring racing out.
     // The flash may only brighten at FLASH_RISE a second, however fast the scroll
-    const target = blast > 0 ? smooth(0, 0.1, blast) * (1 - smooth(0.1, 1, blast)) * strength : 0;
+    // Rewound (a jump back to the hero), the universe only contracts into the light: no flash
+    const burst = rewind ? 0 : strength;
+    const target = blast > 0 ? smooth(0, 0.1, blast) * (1 - smooth(0.1, 1, blast)) * burst : 0;
     flash = target > flash ? Math.min(target, flash + dt * FLASH_RISE) : target;
     if (flash > 0.005) {
       const R = reach * (0.04 + 1.25 * (1 - (1 - blast) ** 3));
@@ -757,7 +751,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       ctx.fillRect(0, 0, w, h);
     }
     // The shock: a soft shell of light racing out ahead of the flash
-    const shock = blast > 0 ? 0.4 * (1 - blast) * smooth(0, 0.04, blast) * Math.min(1, flash / Math.max(target, 0.01)) * strength : 0;
+    const shock = blast > 0 ? 0.4 * (1 - blast) * smooth(0, 0.04, blast) * Math.min(1, flash / Math.max(target, 0.01)) * burst : 0;
     if (shock > 0.01) {
       const r = reach * 1.5 * (1 - (1 - blast) ** 2);
       const shell = ctx.createRadialGradient(cx, cy, r * 0.82, cx, cy, r);
@@ -770,7 +764,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     }
     // Sparks: matter thrown out of the point, slowing as space grows, gone before the first title
     // gathers (sparks are the one streak here, and never behind text)
-    const spark = blast > 0 ? (1 - blast) ** 1.5 * (1 - smooth(0.25, 0.45, blast)) * strength : 0;
+    const spark = blast > 0 ? (1 - blast) ** 1.5 * (1 - smooth(0.25, 0.45, blast)) * burst : 0;
     if (spark > 0.01) {
       const travel = 1 - (1 - blast) ** 2.2;
       ctx.lineCap = 'round';
@@ -864,7 +858,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
         case 'camera':
           z = msg.z;
           speed = msg.speed;
-          flying = msg.flying;
+          rewind = msg.rewind;
           u = msg.u;
           home = msg.home;
           end = msg.end;

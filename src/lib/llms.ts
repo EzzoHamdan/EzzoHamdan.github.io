@@ -1,6 +1,6 @@
 // Markdown summaries for AI agents (https://llmstxt.org), generated from the same data as the
 // pages so they can never disagree with them. English only: the machine-readable lingua franca.
-import { certifications, education, experience, orgs, person, projects, site } from '../data/profile';
+import { certifications, degrees, experience, orgs, person, projects, site } from '../data/profile';
 import { formatMonth, formatPeriod, pageUrl } from './i18n';
 
 const lang = 'en';
@@ -59,10 +59,12 @@ export function llmsFullTxt() {
   out.push(
     '## Education',
     '',
-    `### ${education.degree.en}, ${orgs[education.org].name.en} (${education.start}–${education.end})`,
-    '',
-    ...education.highlights.en.map((h) => `- ${h}`),
-    '',
+    ...degrees.flatMap((d) => [
+      `### ${d.degree.en}, ${orgs[d.org].name.en} (${d.start}–${d.end ?? 'present'})`,
+      '',
+      ...d.highlights.en.map((h) => `- ${h}`),
+      '',
+    ]),
     '## Certifications',
     '',
     ...certifications.map(
