@@ -234,15 +234,15 @@ short" title, tells how it all started, as positions along the route in stops:
 | From | To | On screen | Page |
 | --- | --- | --- | --- |
 | 0 | 0.03 | Nothing: pure black | The hero |
-| 0.03 | 0.56 (`glow`) | A small light appears as soon as the page moves and swells, brighter and more restless, faint spikes around it | The hero departs, gone by 0.5 (`heroGone`); caption "The beginning, 13.8 billion years ago" from 0.3 |
-| 0.56 | 0.78 (`blast`) | The Big Bang: a flash from white to gold to ember red, a soft shock shell, sparks thrown out, the young universe's mottled afterglow cooling | Nothing on screen but the sky |
-| 0.56 | 0.88 (`born`) | A new universe of stars and galaxies grows out of the center to full size | "In short" gathers from 0.7 (`title`) and holds from 0.8 |
+| 0.03 | 0.5 (`glow`) | A small light appears as soon as the page moves and swells, brighter and more restless, faint spikes around it | The hero departs, gone by 0.45 (`heroGone`); caption "The beginning, 13.8 billion years ago" from 0.25 |
+| 0.5 | 0.8 (`blast`) | The Big Bang: a flash from white to gold to ember red, a soft shock shell, sparks thrown out, the young universe's mottled afterglow cooling; its stars light up through it | Nothing on screen but the sky |
+| 0.5 | 0.9 (`born`) | A new universe of stars and galaxies grows out of the center to full size | "In short" gathers from 0.74 (`title`), as the flash fades, and holds from 0.8 |
 
 ```text
-u  0 ─ 0.03 ── 0.2 ──────── 0.5 ── 0.56 ─────── 0.7 ── 0.78 ── 0.8 ──── 0.88 ── 1
-   void │ first light swells ─────────┤ blast (flash, shell, sparks, afterglow) │
-        │      │ hero departs │ alone │      new universe grows ──────────────┤
-                                                 "In short" gathers ─► holds
+u  0 ─ 0.03 ── 0.2 ─────── 0.45 ─ 0.5 ──────────── 0.74 ─ 0.8 ──── 0.9 ── 1
+   void │ first light swells ────────┤ blast (flash, shell, sparks, afterglow) │
+        │      │ hero departs │ alone │      new universe grows ─────────────┤
+                                               "In short" gathers ─► holds
 ```
 
 ```mermaid
@@ -256,7 +256,14 @@ flowchart LR
 ```
 
 Read it as: the blast plays between the hero leaving and the title gathering, so no text is ever
-over the flash. The page side reads the same `GENESIS` positions (`journey.ts::render`, the
+over the flash.
+
+**Scrolling through it is paced too** (`journey.ts::throughBang`): over the first leg (to the end
+of `BLAST_OUT`), each step of the eased camera is held to the menu jumps' pace (`paceAt`), so a
+flick plays the beginning out (about a second) instead of crossing it in a tenth of a second,
+which also kept the flash from brightening. The camera then catches up with the scroll. The
+blast once spanned 0.56 to 0.78; the owner found it too fast to read and asked for it fleshed
+out (2026-11-08). The page side reads the same `GENESIS` positions (`journey.ts::render`, the
 `genesis` branch), which is why the hero departs faster and the first title gathers later than
 any other stop.
 
@@ -356,10 +363,13 @@ length, so text and space move as one. Nothing on the canvas depends on where th
 > neighbouring stop is an ordinary smooth scroll, unless either end is the hero's leg (`u` < 1) or
 > the homecoming (past the last stop): those always fly, however short, because scrolled through
 > they replayed the Big Bang or the dive home at speed. Those jumps are **paced**
-> (`journey.ts::planPace`): each part of the route gets its own time per unit (`PACED`, blended by
+> (`journey.ts::planPace`): each part of the route gets its own time per unit (`PACED`, by
 > `paceAt`): about 1.9 s for the Big Bang, 0.9 s per homecoming stage, 0.9 s for the landing, and
-> open space crossed fast; the flight then cruises at an even speed with soft ends (`cruise`)
-> rather than the smootherstep, which had rushed through the middle. In a paced flight the camera
+> open space crossed fast. Between them `paceAt` changes speed as under a steady push, its speed
+> squared blending evenly with distance; a straight blend of the pace held the camera still after
+> the Big Bang and then lurched it forward. Out of the Big Bang it speeds up from `BLAST_OUT`, as
+> the flash fades. The flight then cruises at an even speed with soft ends (`cruise`) rather than
+> the smootherstep, which had rushed through the middle. In a paced flight the camera
 > (`flightZ`) and the dive home skip the stops' and stages' holds, planes arrive and leave by
 > distance along the route rather than by the clock, and a flight back to the hero sends `rewind`.
 > A reload returns to the same place.
