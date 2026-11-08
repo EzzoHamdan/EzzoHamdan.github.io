@@ -4,7 +4,7 @@
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
 > **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 how the sky works →
 > §4 change recipes → §5 failure messages → §6 sharp edges → §7 decisions.
-> **Reflects code as of 2026-11-07** (`main`, live from that day: the galaxy journey, the owner's
+> **Reflects code as of 2026-11-08** (`main`, live from that day: the galaxy journey, the owner's
 > chosen design, with Amman at its real time of day).
 
 **What must not break:**
@@ -261,8 +261,8 @@ over the flash. The page side reads the same `GENESIS` positions (`journey.ts::r
 any other stop.
 
 > **Guaranteed:** the flash can only brighten at `FLASH_RISE` (3.2 a second), so scrolling back
-> and forth over it can't strobe. A jump through it (a link to a later section) shows only a faint
-> glimpse: the beginning steps aside in fast flight (`intact`), as galaxies dim. The light is
+> and forth over it can't strobe. A jump through it (a menu link) shows none of it: the beginning
+> steps aside in flight (`intact`, shock wave included). The light is
 > drawn where the camera looks (`cx`, `cy`), so it lines up with the title that follows. Nothing
 > else is drawn in the void: no stars, no shooting stars, and clicks make no wishes there. The
 > journey has no hero caption (`.journey .sky-caption`); "The sky over Amman right now" belongs
@@ -303,7 +303,7 @@ closing in on the next destination at the center of the screen:
 | Stage | What is on screen |
 | --- | --- |
 | `milkyway` | The Milky Way, centered on the Sun's place in the Orion Arm (`galaxies.ts::SUN_IN_MILKY_WAY`), marked with a brass ring |
-| `sun` | The Solar System, the planets where they really are right now (`astro.ts::solarSystem`), orbits on a square-root scale so the inner planets aren't crowded into the Sun |
+| `sun` | The Solar System, all eight planets where they really are right now (`astro.ts::solarSystem`; Uranus and Neptune from the same JPL table, too faint to be in `PLANETS`), orbits on a square-root scale so the inner planets aren't crowded into the Sun |
 | `earth` | The zoom moves from the Sun to Earth, which grows out of its dot into a globe centered on Amman, lit for this moment (`astro.ts::subsolarPoint`), so Amman is on its real side of the line between night and day, marked in brass; the caption names that side (`journey.ts::EARTH_CAPTIONS`) |
 | landing | The globe grows a little and fades into Amman's sky as the contact section and the skyline scroll in |
 
@@ -352,7 +352,13 @@ length, so text and space move as one. Nothing on the canvas depends on where th
 > crosses the distance in one smooth move (`glide`, 1.1 to 2.4 s) with every plane in between
 > hidden and the galaxies dimmed, and only the destination arrives. The page scrolls along, so the
 > header highlight and the address stay right; any wheel, touch or key press takes over. A
-> neighbouring stop is an ordinary smooth scroll. A reload returns to the same place.
+> neighbouring stop is an ordinary smooth scroll, unless either end is the hero's leg (`u` < 1) or
+> the homecoming (past the last stop): those always fly, however short, because scrolled through
+> they replayed the Big Bang or the dive home at speed. In flight the page sends `flying` (0..1,
+> eased over `FLYING_EASE`) with the camera, and the sky steps its set pieces aside: the beginning
+> (`intact`), the homecoming (`homeFade`), and the void, which fades over the whole first leg
+> (`voidness`) instead of cutting in at the bang. Their captions hold rather than flicker by. A
+> reload returns to the same place.
 
 **Tunables** (`src/scripts/journey.ts` unless noted): `HOLD` (hold width), `STRIDE` (camera travel
 and arrival distance per stop), `PACE` (scroll per stop) and `WEIGHT` (its share per kind of
@@ -383,7 +389,7 @@ at set times:
 | −16° to −6° | `night` fading into twilight | Windows go out (or come on) a quarter at a time |
 | −6° to −2° | twilight 1: `dawn` while the Sun is in the east, `dusk` in the west | Dawn is the original first-light scene, the last lights going out as you scroll. Dusk is the limestone glowing pink, lights coming on |
 | −2° to 14° | twilight fading into `day` | The low sun's warm light |
-| above 14° | `day` 1 | A blue sky, deep at the top so the contact text reads; bright stone; pigeons. No stars or shooting stars |
+| above 14° | `day` 1 | A blue sky, deep at the top so the contact text reads; bright stone; pigeons. No stars; now and then a faint shooting star (`meteors.ts::DAY_METEORS`, about one in 25 s, at `DAY_METEOR_DIM` brightness) |
 
 In November Amman's sun rises about 07:00 and sets about 17:40 (UTC+3 all year), so `?at=06:45`
 shows dawn and `?at=17:50` dusk.
@@ -616,6 +622,16 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Strictly monolingual pages** (owner's choice). The two languages are linked only through
   `hreflang` and the shared JSON-LD `@id` (`https://ezzohamdan.github.io/#person`), never in
   visible text.
+- **Body text is justified** (2026-11-08, owner's request): paragraphs, list items and the facts,
+  with hyphenation, on screens 700 px and wider (`main :is(p, li, dd)` in `global.css`). Phones
+  keep ragged lines: justified, their narrow column opened gaps and hyphenated three words in a
+  row.
+- **No "Junior" in any title** (2026-11-08, owner's choice): it undersold the z28.ai role, which
+  is titled like the Altibbi one, "Artificial Intelligence Engineer". Don't reintroduce a
+  seniority qualifier in English or Arabic (مبتدئ).
+- **The AAU planet is deep midnight, not pale** (2026-11-08, owner's report): its gold line-art logo
+  read at about 2:1 on the pale planet and about 6:1 on the dark one (`.moon.deep`). It sits by
+  the degree card, which it belongs to, not by the certifications.
 - **The page speaks in the first person; the metadata in the third** (2026-11-07, owner's
   request: "as if it's me"). The hero's opening is `person.intro` ("I'm an AI engineer…"), like
   the rest of the page. `person.summary` stays "Ezzaldeen Hamdan is…" on purpose, because it is the
@@ -662,7 +678,8 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Amman at its real time of day** (2026-11-07, owner's request): the ending used to be dawn
   whatever the hour; now it is Amman right now (§3c). Two choices made on the way. Stars and
   shooting stars leave once the sky is half daylight, because a blue sky can't show them; they
-  stay at night, dawn and dusk, and through the whole flight. And the dome's hero keeps "tonight
+  stay at night, dawn and dusk, and through the whole flight. `[historical]` On 2026-11-08 the
+  owner asked for a rare, faint shooting star by day as well (`DAY_METEORS`). And the dome's hero keeps "tonight
   at 21:00" in daylight, so its sky always has stars.
 - **Content beside the route, not in the middle** (2026-10-12, owner's request): stops used to
   slide each plane to the center and peel it off; now their parts are fixed in space on the
