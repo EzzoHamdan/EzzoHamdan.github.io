@@ -130,7 +130,7 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
                 {t(education.degree, lang)}, {t(orgs[education.org].name, lang)} ({education.end})
               </dd>
             </div>
-            <div data-part="visual" data-at="-0.17,-0.06,0.08"><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).slice(0, 4).join(comma)}</dd></div>
+            <div data-part="visual" data-at="-0.17,-0.06,0.08"><dt>{s.facts.focus}</dt><dd>{t(person.knowsAbout, lang).join(comma)}</dd></div>
             <div data-part="visual" data-at="-0.29,0.13,0.3"><dt>{s.facts.languages}</dt><dd>{t(person.languages, lang)}</dd></div>
             <div data-part="visual" data-at="-0.19,0.27,0.18"><dt>{s.facts.openTo}</dt><dd>{t(person.openTo, lang)}</dd></div>
             <div><dt>{s.facts.contact}</dt><dd><a href={`mailto:${site.email}`}>{site.email}</a></dd></div>
@@ -230,8 +230,8 @@ const pairs = Array.from({ length: Math.ceil(rest.length / 2) }, (_, i) => rest.
       <div class="container">
         <h2 id="education-title" data-stop="title">{s.sections.education.title}</h2>
         <div class="two-col" data-stop="panel">
-          <div class="role-mark" data-part="visual" data-at="-0.31,-0.26,0.55">
-            <figure class="moon" style={`--brand:${BRAND.aau}`} aria-hidden="true">
+          <div class="role-mark" data-part="visual" data-at="0.36,-0.33,0.45">
+            <figure class="moon deep" style={`--brand:${BRAND.aau}`} aria-hidden="true">
               <span class="planet"><Image src={education.logo} alt="" width={240} /></span>
             </figure>
           </div>

@@ -151,7 +151,7 @@ export function night(at = now()): Night {
 }
 
 /**
- * Keplerian elements for the naked-eye planets and the Earth-Moon barycenter, J2000 ecliptic,
+ * Keplerian elements for the planets and the Earth-Moon barycenter, J2000 ecliptic,
  * valid 1800–2050 (E. M. Standish, JPL, "Approximate Positions of the Planets", table 1):
  * [a (au), e, I, L, ϖ (long. of perihelion), Ω (long. of node)] in degrees, then rates per century.
  * Error is well under a degree for these five, far below a pixel's worth of sky.
@@ -169,6 +169,11 @@ const ELEMENTS = {
     -0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106],
   saturn: [9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448,
     -0.0012506, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794],
+  // Too faint for the naked eye (not in PLANETS), drawn only in the Solar System at the end
+  uranus: [19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.9542763, 74.01692503,
+    -0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589],
+  neptune: [30.06992276, 0.00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574,
+    0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664],
 } as const;
 
 /**
@@ -235,7 +240,7 @@ export function planets(ms: number) {
 }
 
 /** Positions around the Sun (au, J2000 ecliptic), for the solar system at the end of the journey. */
-export const ORBITERS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn'] as const;
+export const ORBITERS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'] as const;
 export function solarSystem(ms: number) {
   const T = (julianDay(ms) - 2451545.0) / 36525;
   return ORBITERS.map((key) => ({ key, a: ELEMENTS[key][0], ...heliocentric(key, T) }));

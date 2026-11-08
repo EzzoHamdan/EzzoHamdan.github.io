@@ -73,22 +73,20 @@ export const person = {
   },
   knowsAbout: {
     en: [
-      'Large Language Models',
-      'Retrieval-Augmented Generation',
-      'Machine Learning',
-      'Natural Language Processing',
-      'Data Pipelines',
-      'MLOps',
-      'Model Context Protocol',
+      'LLM Post-Training',
+      'Parameter-Efficient Fine-Tuning',
+      'Data-Centric AI',
+      'Multi-Tenant LLM Serving',
+      'LLM Evaluation',
+      'Mechanistic Interpretability',
     ],
     ar: [
-      'النماذج اللغوية الكبيرة',
-      'التوليد المعزّز بالاسترجاع',
-      'تعلّم الآلة',
-      'معالجة اللغات الطبيعية',
-      'خطوط معالجة البيانات',
-      'عمليات تعلّم الآلة',
-      'بروتوكول سياق النموذج',
+      'التدريب اللاحق للنماذج اللغوية الكبيرة',
+      'الضبط الدقيق الفعّال للمعاملات',
+      'الذكاء الاصطناعي المتمحور حول البيانات',
+      'خدمة النماذج اللغوية الكبيرة متعددة المستأجرين',
+      'تقييم النماذج اللغوية الكبيرة',
+      'التفسير الآلي للنماذج',
     ],
   },
   languages: {
@@ -96,8 +94,8 @@ export const person = {
     ar: 'العربية (اللغة الأم)، الإنجليزية (مستوى C2)',
   },
   openTo: {
-    en: 'AI engineering roles, collaborations and interesting projects',
-    ar: 'فرص هندسة الذكاء الاصطناعي والتعاون والمشاريع المثيرة للاهتمام',
+    en: 'AI engineering and research roles, collaborations and interesting projects',
+    ar: 'فرص هندسة الذكاء الاصطناعي وأبحاثه، والتعاون والمشاريع المثيرة للاهتمام',
   },
 };
 
@@ -174,7 +172,7 @@ export const experience: Role[] = [
   },
   {
     id: 'z28',
-    title: { en: 'Junior Artificial Intelligence Engineer', ar: 'مهندس ذكاء اصطناعي مبتدئ' },
+    title: { en: 'Artificial Intelligence Engineer', ar: 'مهندس ذكاء اصطناعي' },
     orgs: ['z28'],
     logo: z28,
     start: '2026-02',
@@ -349,22 +347,6 @@ export const projects: Project[] = [
     language: 'Python',
     repo: 'https://github.com/EzzoHamdan/MedicalChatbot',
     links: [{ kind: 'github', href: 'https://github.com/EzzoHamdan/MedicalChatbot', label: githubLabel }],
-  },
-  {
-    id: 'ai-learning-engine',
-    name: { en: 'AI Learning Engine', ar: 'محرّك التعلّم الذكي' },
-    context: { en: 'Personal project', ar: 'مشروع شخصي' },
-    description: {
-      en: 'Turns PDF, Word and PowerPoint files into study materials and exams: summaries, flashcards, and quizzes with adjustable difficulty and AI scoring. It works with local models through Ollama, or with Google AI and OpenAI.',
-      ar: 'يحوّل ملفات PDF وWord وPowerPoint إلى مواد دراسية واختبارات: ملخصات وبطاقات تعليمية واختبارات بصعوبة قابلة للتعديل وتصحيح بالذكاء الاصطناعي. يعمل مع نماذج محلية عبر Ollama، أو مع Google AI وOpenAI.',
-    },
-    tech: ['Python', 'LangChain', 'Streamlit', 'Ollama'],
-    language: 'Python',
-    repo: 'https://github.com/EzzoHamdan/AI-Learning-Engine',
-    links: [
-      { kind: 'demo', href: 'https://ai-learning-engine.streamlit.app/', label: { en: 'Live demo', ar: 'تجربة مباشرة' } },
-      { kind: 'github', href: 'https://github.com/EzzoHamdan/AI-Learning-Engine', label: githubLabel },
-    ],
   },
   {
     id: 'uni-archives',

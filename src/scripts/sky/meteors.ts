@@ -61,6 +61,13 @@ function pickStyle() {
   return 0;
 }
 
+/**
+ * Shooting stars over a daylight Amman (owner's request): rare, DAY_METEORS a second against the
+ * night's two or more, and drawn at DAY_METEOR_DIM of their brightness. Used by both renderers.
+ */
+export const DAY_METEORS = 0.04;
+export const DAY_METEOR_DIM = 0.35;
+
 export function createMeteors(makeCanvas: (w: number, h: number) => Canvas) {
   // One soft head sprite per color, drawn once
   const heads = STYLES.map(({ head, trail }) => {

@@ -76,6 +76,8 @@ const PACE = 0.95;
 const WEIGHT: Record<Kind, number> = { hero: 1.4, title: 0.65, panel: 1 };
 /** How long the camera takes to catch up with the scroll position, in seconds. */
 const LAG = 0.14;
+/** How fast the sky learns a jump has started or ended (seconds, `flying`). */
+const FLYING_EASE = 0.15;
 /** A little camera movement during a hold, so the stars answer every scroll. */
 const CREEP = 0.08;
 /**
@@ -534,6 +536,9 @@ export function startJourney() {
             : near.kind === 'hero'
               ? ''
               : near.section;
+    // A jump flies past the beginning and the homecoming without stopping, so their captions
+    // would only flicker by; the caption holds until the destination's
+    if (flight && (key === 'genesis' || (HOME_STAGES as readonly string[]).includes(key))) return;
     // Over Amman the caption is a clock, so it is rewritten whenever its text changes, not only
     // when the place does
     if (key !== captionKey || key === 'home') {
@@ -587,6 +592,8 @@ export function startJourney() {
     ms: number;
   }
   let flight: Flight | null = null;
+  /** 0..1, how much a jump is under way (eased); sent to the sky with the camera. */
+  let flying = 0;
   /** Smootherstep: starts and ends at rest, with no jolt in acceleration either. */
   const glide = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
 
@@ -596,6 +603,7 @@ export function startJourney() {
       type: 'camera',
       z,
       speed,
+      flying,
       u: eased,
       home: stairs(eased) - lastStop,
       end: landing(),
@@ -606,6 +614,10 @@ export function startJourney() {
   function frame(now: number) {
     const dt = Math.min(0.05, (now - lastTime) / 1000 || 1 / 60);
     lastTime = now;
+    // How much a jump is under way, eased both ways, so the sky's set pieces step aside and come
+    // back without a cut, even when the reader's own scroll interrupts the jump
+    flying += ((flight ? 1 : 0) - flying) * (1 - Math.exp(-dt / FLYING_EASE));
+    if (!flight && flying < 0.005) flying = 0;
     if (flight) {
       // The page scrolls along with the jump, so the header, the address and the landing at the
       // end all stay true to where the camera is
@@ -634,7 +646,7 @@ export function startJourney() {
     const speed = (z - lastZ) / dt;
     lastZ = z;
     render(eased, rate);
-    if (eased !== target || rate > 0.02) {
+    if (eased !== target || rate > 0.02 || flying > 0) {
       send(z, speed);
       requestAnimationFrame(frame);
     } else {
@@ -663,7 +675,11 @@ export function startJourney() {
   function flyTo(y: number) {
     const u1 = routeAt(y);
     const distance = Math.abs(u1 - eased);
-    if (distance <= 1.25) {
+    // A short hop between neighbouring stops scrolls there. Anything that starts or ends in the
+    // beginning (the hero's leg) or the homecoming (past the last stop) always flies, however
+    // short: scrolled through, they replayed the Big Bang or the dive home at speed
+    const open = Math.min(u1, eased) >= 1 && Math.max(u1, eased) <= lastStop;
+    if (distance <= 1.25 && open) {
       scrollTo({ top: y, behavior: 'smooth' });
       return;
     }

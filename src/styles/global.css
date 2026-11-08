@@ -358,11 +358,13 @@ section h2 {
   margin-bottom: 2.5rem;
 }
 
-/* Justified, every line the same width (owner's request), with hyphenation so the evened-out
-   lines don't open wide gaps. Not on phones: a column that narrow justified into gaps and three
-   hyphenated words in one paragraph */
+/* Body text is justified, every line the same width (owner's request), with hyphenation so the
+   evened-out lines don't open wide gaps: paragraphs, list items and the facts, on the profile and
+   in articles. A line that doesn't wrap is unaffected. Not on phones: a column that narrow
+   justified into gaps and three hyphenated words in one paragraph. Anything aligned on purpose
+   (titles, dates, captions) has a more specific rule and keeps it */
 @media (min-width: 700px) {
-  .hero-lede {
+  main :is(p, li, dd) {
     text-align: justify;
     hyphens: auto;
   }
@@ -1540,6 +1542,22 @@ section h2 {
     inset -14px -18px 30px rgba(15, 20, 50, 0.32),
     inset 5px 6px 14px rgba(255, 255, 255, 0.7),
     0 0 54px 6px color-mix(in srgb, var(--brand, #8aa4ff) 40%, transparent);
+}
+
+/* A logo drawn in gold line art (AAU) washes out on the pale planet (about 2:1 against white);
+   on a deep midnight one it reads at about 6:1, in the site's own navy and brass */
+.journey .moon.deep .planet {
+  background: radial-gradient(
+    circle at 34% 28%,
+    #3b4572 0%,
+    #242c50 36%,
+    #151b36 70%,
+    color-mix(in srgb, var(--brand, #8aa4ff) 30%, #0b0f22) 100%
+  );
+  box-shadow:
+    inset -14px -18px 30px rgba(0, 0, 0, 0.45),
+    inset 5px 6px 14px rgba(255, 255, 255, 0.1),
+    0 0 54px 6px color-mix(in srgb, var(--brand, #8aa4ff) 38%, transparent);
 }
 
 .journey .moon .planet img {

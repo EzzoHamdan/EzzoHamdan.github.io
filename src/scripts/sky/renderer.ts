@@ -25,7 +25,7 @@
  */
 import { daylight, LOOKS, now as clockNow, PLANETS, RAD, night, planets, siderealTime, type Daylight, type Look } from './astro';
 import { camera, named, projectOne, projectVector, starColor, starMag, stars, type View } from './catalog';
-import { createMeteors } from './meteors';
+import { createMeteors, DAY_METEOR_DIM, DAY_METEORS } from './meteors';
 import { starNames } from '../../data/sky-names';
 import { drawMilkyWay } from './milky-way';
 
@@ -513,9 +513,12 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
       const shower = moment.shower >= 0 ? 1.5 : 1;
       const end = smooth(0.8, 1, p);
       // Rare at the top, building gently toward the end of the page, over Amman while its sky is
-      // dark, and gone once it is even half daylight
+      // dark; once it is half daylight, only the rare dim daytime ones
       const dark = 1 - Math.min(1, 2 * light.day) * end;
-      const rate = calm ? 0.08 * area : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower * dark;
+      // By day, now and then a faint one still crosses over the city (meteors.ts::DAY_METEORS)
+      const rate = calm
+        ? 0.08 * area
+        : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower * dark + DAY_METEORS * area * (1 - dark);
       // Above the skyline as it rises into view; at the end, about half fall behind the city
       floor = 0.9 - 0.3 * end;
       spawnDebt += dt * rate;
@@ -529,7 +532,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
         nextBolide = p > 0.7 ? rand(7, 12) : rand(12, 20);
       }
       meteors.update(dt);
-      meteors.draw(ctx, calm ? 0.6 : 1);
+      meteors.draw(ctx, (calm ? 0.6 : 1) * (DAY_METEOR_DIM + (1 - DAY_METEOR_DIM) * dark));
     }
 
     if (shot.alt < 89) drawGround();
