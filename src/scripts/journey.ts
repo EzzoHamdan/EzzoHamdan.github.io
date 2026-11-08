@@ -79,13 +79,16 @@ const LAG = 0.14;
 /**
  * A menu jump that crosses the beginning or the homecoming slows down through them, so the Big
  * Bang and the dive home play as they do when scrolled slowly: milliseconds of flight per unit of
- * route there, against OPEN_MS across open space. In the first leg, the still ends (the hero
- * holding before the light, the new universe already grown) go at STILL_MS. LAND_MS is the whole
+ * route there, against OPEN_MS across open space. In the first leg, the hero holding before the
+ * light goes at STILL_MS. LAND_MS is the whole
  * landing in Amman. The pace changes gradually between them (`paceAt`), so the camera never
  * brakes or lurches, and the flight keeps an even speed with soft ends (`cruise`, RAMP of its
  * time at each end).
  */
 const PACED = { GENESIS_MS: 1900, STILL_MS: 400, HOME_MS: 900, OPEN_MS: 150, LAND_MS: 900, BASE_MS: 500, MAX_MS: 7000, RAMP: 0.2 } as const;
+
+/** Where a paced flight speeds up out of the Big Bang, on the route: as its flash fades, to open space. */
+const BLAST_OUT = [0.74, 2.2] as const;
 
 /** An even cruise with soft ends: speed rises gently over RAMP of the time, holds, then eases off. */
 const cruise = (t: number) => {
@@ -673,6 +676,7 @@ export function startJourney() {
     }
     const before = eased;
     eased += (target - eased) * (1 - Math.exp(-dt / LAG));
+    eased = throughBang(before, eased, dt);
     if (Math.abs(target - eased) < 0.0004) eased = target;
     rate += (Math.abs(eased - before) / dt - rate) * (1 - Math.exp(-dt / 0.12));
     const z = cameraZ(eased);
@@ -705,6 +709,21 @@ export function startJourney() {
   }
 
   /** Fly to a scroll position: one smooth jump if it is more than a stop away (see renderFlight). */
+  /**
+   * Scrolling through the beginning plays it no faster than a menu jump does (paceAt): a flick
+   * used to cross the hero's departure, the swelling light and the whole blast in a tenth of a
+   * second, too fast for the flash to even brighten. Over the first leg (to BLAST_OUT's end) each
+   * step is held to that pace, and the camera catches up with the scroll once the beginning has
+   * played out. Beyond it, and across open space, scrolling is unchanged.
+   */
+  function throughBang(from: number, to: number, dt: number) {
+    const top = BLAST_OUT[1];
+    if (Math.min(from, to) >= top) return to;
+    const start = Math.min(from, top);
+    const most = (dt * 1000) / paceAt(start);
+    return to > from ? Math.min(to, start + most) : Math.max(to, start - most);
+  }
+
   /** How far the landing in Amman has come at a scroll position (as `landing`, for any y). */
   const landingAt = (y: number) => clamp(1 - (contactTop - y) / vh);
 
@@ -715,11 +734,19 @@ export function startJourney() {
   const flightZ = (u: number) => STRIDE * F * (Math.min(u, lastStop + 1) + 0.15 * Math.max(0, u - lastStop - 1));
 
   /** A paced flight's milliseconds per unit of route at a position, changing gradually (PACED). */
-  const paceAt = (u: number) =>
-    PACED.OPEN_MS +
-    (PACED.STILL_MS - PACED.OPEN_MS) * (1 - smooth(1, 1.8, u)) +
-    (PACED.GENESIS_MS - PACED.STILL_MS) * smooth(0.12, 0.3, u) * (1 - smooth(0.85, 0.95, u)) +
-    (PACED.HOME_MS - PACED.OPEN_MS) * smooth(lastStop - 0.3, lastStop + 0.5, u);
+  // The camera changes speed as under a steady push: its speed squared changes evenly with the
+  // distance covered (smoothly started and stopped), so it neither lingers nor lurches. Blending
+  // the pace itself held the camera slow and then threw it forward, because a faster camera
+  // covers more route a second and the change compounds. Out of the Big Bang it starts speeding
+  // up as the flash fades (BLAST_OUT), while the new universe is still settling
+  const paceAt = (u: number) => {
+    const sq = (ms: number) => 1 / (ms * ms);
+    const blend = (a: number, b: number, k: number) => 1 / Math.sqrt(sq(a) + (sq(b) - sq(a)) * k);
+    if (u < 0.3) return blend(PACED.STILL_MS, PACED.GENESIS_MS, smooth(0.12, 0.3, u));
+    if (u < lastStop - 0.3) return blend(PACED.GENESIS_MS, PACED.OPEN_MS, smooth(BLAST_OUT[0], BLAST_OUT[1], u));
+    return blend(PACED.OPEN_MS, PACED.HOME_MS, smooth(lastStop - 0.3, lastStop + 0.5, u));
+  };
+
 
   /**
    * Plan a paced flight between two scroll positions: sample the way, give each step its time

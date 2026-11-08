@@ -575,7 +575,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     // galaxies dim in fast flight. A menu jump slows down through it (journey.ts::flyTo), so it
     // plays in full
     const intact = 1 - smooth(6 * F, 20 * F, Math.abs(speed));
-    const born = banged ? 1 - (1 - smooth(GENESIS.bang + 0.02, GENESIS.bang + 0.2, u)) * intact : 1;
+    // The new universe's stars light up through the blast
+    const born = banged ? 1 - (1 - smooth(GENESIS.bang + 0.1 * GENESIS.blast, GENESIS.bang + 0.85 * GENESIS.blast, u)) * intact : 1;
     const scale = 1 - (1 - (0.06 + 0.94 * grown)) * intact;
     const genesis = first && u > GENESIS.glow[0] - 0.02 && u < GENESIS.born + 0.04;
     // Landing back in Amman's air at the end, where the stars twinkle again

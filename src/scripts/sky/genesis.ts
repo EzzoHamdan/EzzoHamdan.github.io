@@ -10,4 +10,4 @@
  * - born: the new universe has grown to full size
  * The flash lies between the hero leaving and the title gathering, so it is never behind text.
  */
-export const GENESIS = { glow: [0.03, 0.56], heroGone: 0.5, bang: 0.56, blast: 0.22, title: 0.7, born: 0.88 } as const;
+export const GENESIS = { glow: [0.03, 0.5], heroGone: 0.45, bang: 0.5, blast: 0.3, title: 0.74, born: 0.9 } as const;
