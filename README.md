@@ -261,8 +261,9 @@ over the flash. The page side reads the same `GENESIS` positions (`journey.ts::r
 any other stop.
 
 > **Guaranteed:** the flash can only brighten at `FLASH_RISE` (3.2 a second), so scrolling back
-> and forth over it can't strobe. A jump through it (a menu link) shows none of it: the beginning
-> steps aside in flight (`intact`, shock wave included). The light is
+> and forth over it can't strobe. A menu jump through it slows down and plays it in full (§3b,
+> "Focus and links"); a jump back to the hero plays it as a calm contraction (`rewind`: no flash,
+> shock or sparks). Only a reader's fast flick skips it (`intact`, by camera speed). The light is
 > drawn where the camera looks (`cx`, `cy`), so it lines up with the title that follows. Nothing
 > else is drawn in the void: no stars, no shooting stars, and clicks make no wishes there. The
 > journey has no hero caption (`.journey .sky-caption`); "The sky over Amman right now" belongs
@@ -354,11 +355,23 @@ length, so text and space move as one. Nothing on the canvas depends on where th
 > header highlight and the address stay right; any wheel, touch or key press takes over. A
 > neighbouring stop is an ordinary smooth scroll, unless either end is the hero's leg (`u` < 1) or
 > the homecoming (past the last stop): those always fly, however short, because scrolled through
-> they replayed the Big Bang or the dive home at speed. In flight the page sends `flying` (0..1,
-> eased over `FLYING_EASE`) with the camera, and the sky steps its set pieces aside: the beginning
-> (`intact`), the homecoming (`homeFade`), and the void, which fades over the whole first leg
-> (`voidness`) instead of cutting in at the bang. Their captions hold rather than flicker by. A
-> reload returns to the same place.
+> they replayed the Big Bang or the dive home at speed. Those jumps are **paced**
+> (`journey.ts::planPace`): each part of the route gets its own time per unit (`PACED`, blended by
+> `paceAt`): about 1.9 s for the Big Bang, 0.9 s per homecoming stage, 0.9 s for the landing, and
+> open space crossed fast; the flight then cruises at an even speed with soft ends (`cruise`)
+> rather than the smootherstep, which had rushed through the middle. In a paced flight the camera
+> (`flightZ`) and the dive home skip the stops' and stages' holds, planes arrive and leave by
+> distance along the route rather than by the clock, and a flight back to the hero sends `rewind`.
+> A reload returns to the same place.
+
+```text
+open-space jump:  y ─── glide(t) ───────────────────────────────► y1      (1.1–2.4 s)
+paced jump:       time shares ∝ paceAt(u):  [Big Bang ▓▓▓▓▓][open ░][home ▓▓▓][land ▓]
+                  cruise(t): soft start ─ even speed ─ soft stop          (up to 7 s)
+```
+
+Read it as: a paced jump spends its time where there is something to watch, and never speeds up
+in the middle of it.
 
 **Tunables** (`src/scripts/journey.ts` unless noted): `HOLD` (hold width), `STRIDE` (camera travel
 and arrival distance per stop), `PACE` (scroll per stop) and `WEIGHT` (its share per kind of
@@ -450,6 +463,12 @@ full-width card.
 2. Preview it with `npm run dev` at `/blog/<slug>/`.
 3. Flip it to `draft: false` to publish. `/blog/` and the sitemap entry appear automatically with
    the first published post.
+
+**Add a degree** (one is anticipated): append it to `degrees` in `profile.ts`, newest first, with
+its logo in `src/assets/logos/` and its university in `orgs`; give the org a planet color in
+`ProfilePage.astro`'s `BRAND` (and add it to `DEEP` if its logo is light line art). It becomes its
+own stop in Education, the newest degree becomes the "Education" fact, and JSON-LD and
+`llms-full.txt` pick it up. `end: null` shows "Present". Verify on a wide window and a phone.
 
 **Add a block of content to the journey:** put `data-stop="panel"` on its outermost element (or
 `data-stop="title"` on a section's `<h2>`), inside a `<section id>` in `main`. Keep it under one
@@ -662,6 +681,11 @@ if the spelling differs (it's "Shedar", not "Schedar").
 - **Links jump instead of scrolling through** (2026-10-12, owner's report). Smooth-scrolling to
   a far section played every plane's arrive and depart on the way, which flashed them past
   abruptly. A jump is one move with nothing in between (§3b).
+- `[historical]` **Jumps to the hero and Contact: hiding the set pieces was tried and dropped**
+  (2026-11-08). Skipping the Big Bang and the dive home in flight felt "weird" to the owner; they
+  want them played. Paced flights do that. The first paced version eased the whole flight with a
+  smootherstep, which paused at the start and rushed the Big Bang in the middle ("pushy"), and
+  replayed the flash backwards on the way home; `cruise` and `rewind` replaced both.
 - **Farthest galaxy first** (2026-10-12, owner's request): the first order (Andromeda outward to
   the Sombrero) read as flying away from home. Distances from McQuinn et al. 2016 for the Sombrero
   (31 million light-years) and the Whirlpool (28 million).
