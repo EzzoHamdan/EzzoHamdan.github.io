@@ -26,6 +26,7 @@
 import { daylight, LOOKS, now as clockNow, PLANETS, RAD, night, planets, siderealTime, type Daylight, type Look } from './astro';
 import { camera, named, projectOne, projectVector, starColor, starMag, stars, type View } from './catalog';
 import { createMeteors, DAY_METEOR_DIM, DAY_METEORS } from './meteors';
+import { CLEAR_SKY, createWeatherSky, veilOf, weatherSky, type SkyWeather } from './weather';
 import { starNames } from '../../data/sky-names';
 import { drawMilkyWay } from './milky-way';
 
@@ -44,15 +45,17 @@ export type SkyMessage =
       calm?: boolean;
     }
   | { type: 'resize'; width: number; height: number; dpr: number }
-  /** Scroll position (0..1) and where the skyline's far hills are on screen right now. */
-  | { type: 'scroll'; progress: number; horizonY: number }
+  /** Scroll position (0..1), where the skyline's far hills are and the contact text ends on screen. */
+  | { type: 'scroll'; progress: number; horizonY: number; textY: number }
   /** Where each section's shot begins, in pixels of scroll, and the total scroll length. */
   | { type: 'scenes'; anchors: { id: string; at: number }[]; max: number; vh: number }
   | { type: 'motion'; reduced: boolean }
   | { type: 'visible'; visible: boolean }
   | { type: 'pointer'; x: number; y: number }
   | { type: 'pointer-leave' }
-  | { type: 'wish'; x: number; y: number };
+  | { type: 'wish'; x: number; y: number }
+  /** Amman's weather for this half of the day (sky/weather.ts), for the end of the page. */
+  | ({ type: 'weather' } & SkyWeather);
 
 export type SkyEvent =
   /** A star (index into `starNames`) or planet (index into `PLANETS`) under the pointer; -1 hides. */
@@ -130,9 +133,10 @@ const STARLIGHT: Record<Look, number> = { night: 0.85, dawn: 0.35, day: 0, dusk:
 const blend = (table: Record<Look, number[][]>, light: Daylight) =>
   table.night.map((_, i) => [0, 1, 2].map((j) => LOOKS.reduce((sum, k) => sum + table[k][i][j] * light[k], 0)));
 
-function atmosphere(p: number, light: Daylight) {
+function atmosphere(p: number, light: Daylight, weather: SkyWeather, k: number) {
   const [approachTop, approachLow] = blend(APPROACH, light);
-  const [ammanTop, ammanLow] = blend(AMMAN_SKY, light);
+  // Amman's weather tints its sky at the end of the page (sky/weather.ts)
+  const [ammanTop, ammanLow] = weatherSky(...(blend(AMMAN_SKY, light) as [number[], number[]]), weather, light, k);
   const stops: [number, number[], number[]][] = [...ATMOSPHERE, [0.9, approachTop, approachLow], [1, ammanTop, ammanLow]];
   let i = 1;
   while (i < stops.length - 1 && stops[i][0] < p) i++;
@@ -201,6 +205,9 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   // Amman's look at the end of the page, right now
   let light = daylight(clockNow());
   let starlight = LOOKS.reduce((sum, k) => sum + STARLIGHT[k] * light[k], 0);
+  // Amman's weather at the end of the page: clouds, tints, the veil over stars, lightning
+  let weather: SkyWeather = CLEAR_SKY;
+  const weatherScene = createWeatherSky(makeCanvas);
   let refreshedAt = 0;
   let target = 0, progress = 0;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(6, 12), startedAt = 0;
@@ -208,6 +215,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
   let scrollMax = 1;
   let vh = 1;
   let horizonY = NaN;
+  let textY = NaN;
   let shot: Shot = SHOTS.hero;
   let view: View = camera(1, 1, 180, 90, 90, 1);
   let lst = NaN;
@@ -475,10 +483,12 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
 
     // Full sky behind the hero, calmer behind reading sections, fading into Amman's sky at the
     // end, as far as its time of day leaves any starlight
-    const dim = calm ? 0.5 : (1 - 0.3 * smooth(0.04, 0.14, p)) * (1 - (1 - starlight) * smooth(0.82, 1, p));
+    // How much of the starlight and the shooting stars Amman's weather hides at the end
+    const veil = calm ? 0 : veilOf(weather) * smooth(0.82, 1, p);
+    const dim = calm ? 0.5 : (1 - 0.3 * smooth(0.04, 0.14, p)) * (1 - (1 - starlight) * smooth(0.82, 1, p)) * (1 - veil);
 
     // The atmosphere: dusk at the top of the page, midnight while reading, Amman now at the end
-    const air = atmosphere(calm ? 0.4 : p, light);
+    const air = atmosphere(calm ? 0.4 : p, light, calm ? CLEAR_SKY : weather, smooth(0.8, 1, p));
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, air.top);
     sky.addColorStop(0.55, air.mid);
@@ -518,7 +528,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
       // By day, now and then a faint one still crosses over the city (meteors.ts::DAY_METEORS)
       const rate = calm
         ? 0.08 * area
-        : (0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower * dark + DAY_METEORS * area * (1 - dark);
+        : ((0.25 + 2.2 * smooth(0.5, 0.97, p) ** 1.5) * area * shower * dark + DAY_METEORS * area * (1 - dark)) * (1 - veil);
       // Above the skyline as it rises into view; at the end, about half fall behind the city
       floor = 0.9 - 0.3 * end;
       spawnDebt += dt * rate;
@@ -526,13 +536,16 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
         meteors.spawn(w, h, false, floor, 0.5 * end);
         spawnDebt -= 1;
       }
-      nextBolide -= dt * dark;
+      nextBolide -= dt * dark * (1 - veil);
       if (nextBolide <= 0 && !calm) {
         meteors.spawn(w, h, true, floor, 0.5 * end);
         nextBolide = p > 0.7 ? rand(7, 12) : rand(12, 20);
       }
       meteors.update(dt);
-      meteors.draw(ctx, (calm ? 0.6 : 1) * (DAY_METEOR_DIM + (1 - DAY_METEOR_DIM) * dark));
+      meteors.draw(ctx, (calm ? 0.6 : 1) * (DAY_METEOR_DIM + (1 - DAY_METEOR_DIM) * dark) * (1 - veil));
+    }
+    if (!calm) {
+      weatherScene.draw(ctx, { w, h, horizon: horizonY, text: textY, weather, light, alpha: smooth(0.85, 1, p), dt, still });
     }
 
     if (shot.alt < 89) drawGround();
@@ -613,6 +626,7 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
         case 'scroll':
           target = clamp(msg.progress);
           horizonY = msg.horizonY;
+          textY = msg.textY;
           if (reduced || !visible) {
             progress = target;
             render(performance.now());
@@ -632,6 +646,12 @@ export function createSky(canvas: Canvas, emit: (event: SkyEvent) => void = () =
         case 'pointer-leave':
           hover(-1e4, -1e4);
           return;
+        case 'weather': {
+          const { type: _, ...rest } = msg;
+          weather = rest;
+          if (reduced || !visible) render(performance.now());
+          return;
+        }
         case 'wish':
           if (!reduced && visible) meteors.launch(msg.x, msg.y, w, h * floor);
           return;

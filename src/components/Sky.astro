@@ -8,6 +8,7 @@
   import { planetNames, showers, starNames } from '../data/sky-names';
   import { PLANETS, clockOffset, night } from '../scripts/sky/astro';
   import { ammanNow, startJourney } from '../scripts/journey';
+  import { latestWeather, onWeather, weatherLine } from '../scripts/weather';
 
   const canvas = document.getElementById('sky') as HTMLCanvasElement;
   const starLabel = document.getElementById('star-label') as HTMLElement;
@@ -35,7 +36,15 @@
   function showView(e: Extract<SkyEvent, { type: 'view' }>) {
     const body = e.kind === 'planet' ? planetNames[PLANETS[e.index]] : e.kind === 'star' ? starNames[e.index] : null;
     const name = body ? (lang === 'ar' ? body.ar : body.en) : '';
-    viewCaption.textContent = e.home ? ammanNow(lang) : name ? `${directions[e.direction]}: ${name}` : directions[e.direction];
+    if (e.home) {
+      // Amman's clock, and its weather for this half of the day on a second line
+      const w = latestWeather();
+      const clock = Object.assign(document.createElement('span'), { textContent: ammanNow(lang) });
+      const sky = Object.assign(document.createElement('span'), { className: 'sky-distance', textContent: w ? weatherLine(w, lang) : '' });
+      viewCaption.replaceChildren(clock, sky);
+      return;
+    }
+    viewCaption.textContent = name ? `${directions[e.direction]}: ${name}` : directions[e.direction];
   }
 
   function onSkyEvent(e: SkyEvent) {
@@ -121,6 +130,14 @@
     });
 
     document.addEventListener('visibilitychange', () => post({ type: 'visible', visible: !document.hidden }));
+    // Amman's weather for the end of the page, only where there is an Amman to show it over
+    if (document.querySelector('.skyline')) {
+      onWeather((w) => {
+        if (!w) return;
+        const { kind: _, period: __, ...sky } = w;
+        post({ type: 'weather', ...sky });
+      });
+    }
     motion.addEventListener('change', () => post({ type: 'motion', reduced: motion.matches }));
 
     // Hover names and wishes only over empty sky, so reading and links are never interrupted.
@@ -161,11 +178,14 @@
       const scale = Math.max(r.width / box.width, r.height / box.height);
       return r.bottom - (box.height - Number(skyline.dataset.horizon)) * scale;
     };
+    // Where the contact text ends on screen now, which clouds keep below (sky/weather.ts)
+    const contactWords = document.querySelector('#contact .contact');
+    const textNow = () => contactWords?.getBoundingClientRect().bottom ?? NaN;
     const onScroll = () => {
       ticking = false;
       const max = document.documentElement.scrollHeight - innerHeight;
       const progress = max > 0 ? Math.min(1, scrollY / max) : 0;
-      post({ type: 'scroll', progress, horizonY: horizonNow() });
+      post({ type: 'scroll', progress, horizonY: horizonNow(), textY: textNow() });
       // The hero has its own caption; the view caption takes over once the journey starts
       viewCaption.hidden = calm || progress < 0.06 || !viewCaption.textContent;
     };

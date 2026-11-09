@@ -25,6 +25,7 @@
 import type { JourneyMessage } from './sky/journey';
 import { GENESIS } from './sky/genesis';
 import { ammanClock, daylight, mainLook, now, type Look } from './sky/astro';
+import { latestWeather, weatherLine } from './weather';
 
 export const JOURNEY_QUERY = '(min-width: 900px) and (min-height: 560px) and (prefers-reduced-motion: no-preference)';
 
@@ -280,7 +281,7 @@ export function startJourney() {
   });
   const lastStop = stops.length - 1;
 
-  let vw = 0, vh = 0, F = 1000, cy = 0, contactTop = 0, horizonFromContact = NaN;
+  let vw = 0, vh = 0, F = 1000, cy = 0, contactTop = 0, horizonFromContact = NaN, textFromContact = NaN;
   /** Scroll positions of the homecoming's stages, after the last stop. */
   let homeY: number[] = [];
   let sink: ((msg: JourneyMessage) => void) | null = null;
@@ -335,6 +336,9 @@ export function startJourney() {
       const box = skyline.viewBox.baseVal;
       const scale = Math.max(r.width / box.width, r.height / box.height);
       horizonFromContact = r.bottom - c.top - (box.height - Number(skyline.dataset.horizon)) * scale;
+      // And where the contact text ends, which clouds keep below (sky/weather.ts)
+      const words = contact.querySelector('.contact')?.getBoundingClientRect();
+      textFromContact = words ? words.bottom - c.top : NaN;
     }
 
     sink?.({
@@ -585,8 +589,16 @@ export function startJourney() {
     }
     // The distance from Earth counts down between places and holds while a stop is read
     const ly = key === 'home' || key === 'genesis' ? 0 : distanceAt(u);
+    // Over Amman the second line is its weather for this half of the day
+    const weather = key === 'home' ? latestWeather() : null;
     const distance =
-      key === 'genesis' ? (lang === 'ar' ? 'قبل 13.8 مليار سنة' : '13.8 billion years ago') : ly > 0 ? formatDistance(ly, lang) : '';
+      key === 'genesis'
+        ? lang === 'ar' ? 'قبل 13.8 مليار سنة' : '13.8 billion years ago'
+        : weather
+          ? weatherLine(weather, lang)
+          : ly > 0
+            ? formatDistance(ly, lang)
+            : '';
     if (distance !== captionDistance.textContent) captionDistance.textContent = distance;
   }
 
@@ -648,6 +660,7 @@ export function startJourney() {
       rewind: !!flight?.pace && flight.u1 < flight.u0,
       end: landing(),
       horizonY: Number.isFinite(horizonFromContact) ? top + horizonFromContact : NaN,
+      textY: Number.isFinite(textFromContact) ? top + textFromContact : NaN,
     });
   }
 

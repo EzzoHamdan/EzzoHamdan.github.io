@@ -28,6 +28,7 @@ import { daylight, LOOKS, now as clockNow, night, siderealTime, solarSystem, typ
 import { camera as skyCamera, starColor, starMag, stars } from './catalog';
 import { createGlobe } from './earth';
 import { createMeteors, DAY_METEOR_DIM, DAY_METEORS } from './meteors';
+import { CLEAR_SKY, createWeatherSky, veilOf, weatherSky, type SkyWeather } from './weather';
 import { GENESIS } from './genesis';
 import { GALAXY_RADIUS, paintGalaxy, SPRITE, SUN_IN_MILKY_WAY, type GalaxyKind } from './galaxies';
 
@@ -53,15 +54,17 @@ export type JourneyMessage =
    * The camera now: distance travelled, its speed (per second), the position along the route in
    * stops, the homecoming's progress in stages (0 at the last stop, 1 the Milky Way, 2 the Sun,
    * 3 the Earth; negative before), how far the final landing has come (0..1), and where the
-   * skyline's far hills are. `rewind`: a menu jump is flying back to the hero, so the beginning
+   * skyline's far hills are, and where the contact text ends (`textY`). `rewind`: a menu jump is flying back to the hero, so the beginning
    * plays backwards as a contraction, without the blast's flash and sparks.
    */
-  | { type: 'camera'; z: number; speed: number; u: number; home: number; end: number; horizonY: number; rewind: boolean }
+  | { type: 'camera'; z: number; speed: number; u: number; home: number; end: number; horizonY: number; textY: number; rewind: boolean }
   /** Where the mouse leans the view, -1..1 each way, eased by the page. */
   | { type: 'lean'; x: number; y: number }
   | { type: 'motion'; reduced: boolean }
   | { type: 'visible'; visible: boolean }
-  | { type: 'wish'; x: number; y: number };
+  | { type: 'wish'; x: number; y: number }
+  /** Amman's weather for this half of the day (sky/weather.ts), for the end of the page. */
+  | ({ type: 'weather' } & SkyWeather);
 
 type Canvas = HTMLCanvasElement | OffscreenCanvas;
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -186,10 +189,13 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
 
   let w = 0, h = 0, dpr = 1;
   let F = 1000, stride = 4000, cx = 0, cy = 0;
-  let z = 0, speed = 0, u = 0, home = -9, end = 0, horizonY = NaN, lastStop = 99, rewind = false;
+  let z = 0, speed = 0, u = 0, home = -9, end = 0, horizonY = NaN, textY = NaN, lastStop = 99, rewind = false;
   let reduced = false, visible = true, started = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(8, 14);
   let drawnKey = '';
+  // Amman's weather at the end of the page: clouds, tints, the veil over stars, lightning
+  let weather: SkyWeather = CLEAR_SKY;
+  const weatherScene = createWeatherSky(makeCanvas);
   // The beginning: the flash as shown (it may only brighten at FLASH_RISE), the singularity's glow,
   // and the afterglow's mottled texture, made when first needed
   let flash = 0;
@@ -606,7 +612,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const L = homeLevel(home);
     if (L > 0.3 && L < 2.5) orbitClock += dt;
 
-    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done || leaned || genesis;
+    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done || leaned || genesis || weatherScene.busy();
     leaned = false;
     const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
     if (drift < 0.01 && !moving && key === drawnKey) return;
@@ -622,8 +628,16 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       if (genesis) drawGenesis(glow, 0, 1, dt, intact);
       return;
     }
-    const top = mix(mix(SPACE[0], descent[0], pre), homeSky[0], landed);
-    const low = mix(mix(SPACE[1], descent[1], pre), homeSky[1], landed);
+    // Amman's weather tints its sky as the camera comes down into it
+    const [top, low] = weatherSky(
+      mix(mix(SPACE[0], descent[0], pre), homeSky[0], landed),
+      mix(mix(SPACE[1], descent[1], pre), homeSky[1], landed),
+      weather,
+      light,
+      Math.max(0.5 * pre, landed),
+    );
+    // How much of the starlight and the shooting stars the weather hides over Amman
+    const veil = veilOf(weather) * landed;
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, rgb(top));
     sky.addColorStop(0.55, rgb(mix(top, low, 0.25)));
@@ -644,7 +658,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     // Home fades into Amman's sky as the city comes into view; by day the stars go with it
     const homeFade = 1 - smooth(0.05, 0.45, end);
     drawHomeBack(L, homeFade);
-    drawStars(now / 1000, born * (1 - (1 - starlight) * landed), twinkle, 1 / scale);
+    drawStars(now / 1000, born * (1 - (1 - starlight) * landed) * (1 - veil), twinkle, 1 / scale);
     drawHomeFront(L, homeFade);
     if (scaled) ctx.restore();
 
@@ -654,21 +668,22 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       // daylight, only the rare dim daytime ones
       const dark = Math.max(0, 1 - 2 * light.day);
       // By day, now and then a faint one still crosses (DAY_METEORS a second, drawn dim)
-      const rate = (0.25 + 2.1 * end ** 1.5) * area * pre * dark + DAY_METEORS * area * pre * (1 - dark);
+      const rate = ((0.25 + 2.1 * end ** 1.5) * area * pre * dark + DAY_METEORS * area * pre * (1 - dark)) * (1 - veil);
       const floor = end > 0.05 && Number.isFinite(horizonY) ? clamp(horizonY / h, 0.3, 0.95) : 0.92;
       spawnDebt += dt * rate;
       while (spawnDebt >= 1) {
         meteors.spawn(w, h, false, floor, 0.5 * landed);
         spawnDebt -= 1;
       }
-      nextBolide -= dt * pre * dark;
+      nextBolide -= dt * pre * dark * (1 - veil);
       if (nextBolide <= 0) {
         meteors.spawn(w, h, true, floor, 0.5 * landed);
         nextBolide = rand(7, 12);
       }
       meteors.update(dt);
-      meteors.draw(ctx, DAY_METEOR_DIM + (1 - DAY_METEOR_DIM) * dark);
+      meteors.draw(ctx, (DAY_METEOR_DIM + (1 - DAY_METEOR_DIM) * dark) * (1 - veil));
     }
+    weatherScene.draw(ctx, { w, h, horizon: horizonY, text: textY, weather, light, alpha: landed, dt, still: reduced });
     if (genesis) drawGenesis(0, blast, scale, dt, intact);
     else flash = 0;
   }
@@ -864,7 +879,14 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
           home = msg.home;
           end = msg.end;
           horizonY = msg.horizonY;
+          textY = msg.textY;
           return;
+        case 'weather': {
+          const { type: _, ...rest } = msg;
+          weather = rest;
+          drawnKey = '';
+          return;
+        }
         case 'lean':
           leanX = msg.x;
           leanY = msg.y;

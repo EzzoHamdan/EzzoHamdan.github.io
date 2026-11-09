@@ -73,13 +73,17 @@ interface Layer {
   strokes: { d: string; stroke: string; width: number }[];
   lights: Light[];
   lamps: Lamp[];
+  /** Snow on the roofs, shown only when it snows (`.snowcap`, the weather script). */
+  caps: number[][];
+  /** A grove's trees, which sway in the wind. */
+  grove?: boolean;
   greens: { x: number; y: number; r: number }[];
   beacons: { x: number; y: number }[];
 }
 const layers: Layer[] = [];
 let L!: Layer;
 const layer = () => {
-  L = { walls: new Map(), paths: new Map(), pens: new Map(), strokes: [], lights: [], lamps: [], greens: [], beacons: [] };
+  L = { walls: new Map(), paths: new Map(), pens: new Map(), strokes: [], lights: [], lamps: [], caps: [], greens: [], beacons: [] };
   layers.push(L);
 };
 // What lights a shape at night: nothing for the city, which goes dark; 'flood' for the landmarks
@@ -181,6 +185,7 @@ function house(x: number, base: number, w: number, h: number, s: HouseStyle) {
   rect(front, x, top, face, run, true);
   rect(tone(SIDE, s.haze), x + face, top + 0.8 * k, sideW, run, true);
   if (k < 0.4) {
+    L.caps.push([x, top - 0.6, face, 1.3]);
     // Too far for windows: at night a light or two per house, so the far hills glitter
     for (let i = 0; i < 2; i++) if (P() < 0.45) lamp(x + P() * Math.max(0, face - 1.2), top + 0.8 + P() * Math.max(0, h - 2), 1.2, 1);
     return;
@@ -193,6 +198,8 @@ function house(x: number, base: number, w: number, h: number, s: HouseStyle) {
   if (roof < top) rect(front, x, roof, face, top - roof, true);
   rect(tone(ROOF, s.haze), x, roof, face, 1.2 * k);
   rect(tone(SHADE, s.haze), x, top + 1.3 * k, face, 0.9 * k);
+  // Snow lies along the roof's edge, a little over it (shown only when it snows)
+  L.caps.push([x - 0.4 * k, roof - 1.6 * k, face + 0.8 * k, 2.6 * k]);
 
   // What stands on the roof, left to right, each in its own spot
   let at = x + between(1, 4) * k;
@@ -380,6 +387,7 @@ type Tree = 'cypress' | 'pine' | 'olive' | 'palm';
  */
 function grove(fn: (x: number) => number, x0: number, x1: number, count: number, sink: number, hMin: number, hMax: number, haze: number, kinds: Tree[], skip?: (x: number) => boolean) {
   layer();
+  L.grove = true;
   for (let i = 0; i < count; i++) {
     const x = x0 + ((i + 0.15 + R() * 0.7) * (x1 - x0)) / count;
     if (skip?.(x)) continue;
@@ -642,6 +650,29 @@ rect('url(#amman-street)', 0, 372, W, 48);
 // A flock of pigeons, scattered around the middle of their loop
 const pigeons = [[0, 0], [11, -4], [19, 3], [7, 8], [27, -2], [15, -10], [33, 6], [-8, 4], [23, 11]];
 
+// ── Weather in front of the city (shown by the weather script, styled in global.css) ──
+// Rain and snow are small repeating tiles that slide down; generated here, deterministically
+let weatherSeed = 5;
+const Q = () => (weatherSeed = (weatherSeed * 16807) % 2147483647) / 2147483647;
+const tile = (size: number, body: string) =>
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>${body}</svg>`)}")`;
+const rainTile = tile(
+  200,
+  Array.from({ length: 30 }, () => {
+    const x = Math.round(Q() * 200);
+    const y = Math.round(Q() * 200);
+    const len = Math.round(9 + Q() * 16);
+    return `<path d='M${x} ${y}v${len}' stroke='white' stroke-opacity='${(0.35 + Q() * 0.5).toFixed(2)}' stroke-width='1.1' stroke-linecap='round'/>`;
+  }).join(''),
+);
+const snowTile = tile(
+  240,
+  Array.from({ length: 34 }, () => {
+    const r = (0.8 + Q() ** 2 * 2.2).toFixed(1);
+    return `<circle cx='${Math.round(Q() * 240)}' cy='${Math.round(Q() * 240)}' r='${r}' fill='white' fill-opacity='${(0.55 + Q() * 0.45).toFixed(2)}'/>`;
+  }).join(''),
+);
+
 // ── Time of day ──
 // Everything above is Amman at first light. The page shows the city at its real time of day (the
 // script below, astro.ts::daylight), so every color also gets a night, a day and a dusk version:
@@ -726,7 +757,20 @@ function lampPaths(lamps: Lamp[]) {
 
 // Everything the markup paints, with its colors as variables (all registered before the <svg>'s
 // own attributes are written)
+/** Rectangles as one path, each moving relatively from the last (as lampPaths). */
+function rectPath(rects: number[][]) {
+  let d = '';
+  let pen: number[] | undefined;
+  for (const [x, y, w, h] of rects) {
+    d += `${pen ? `m${n(x - pen[0])} ${n(y - pen[1])}` : `M${n(x)} ${n(y)}`}h${n(w)}v${n(h)}h${n(-w)}`;
+    pen = [f(x), f(y + h)];
+  }
+  return d;
+}
+
 const drawn = layers.map((l) => ({
+  grove: !!l.grove,
+  caps: l.caps.length ? rectPath(l.caps) : '',
   fills: [...l.walls, ...l.paths].map(([fill, ds]) => ({
     fill: fill.startsWith('url') ? fill : undefined,
     style: fill.startsWith('url') ? undefined : `fill:${cv(fill)}`,
@@ -882,7 +926,8 @@ const looks = LOOKS.map((look) => palette.map((c) => rgba8(c[look])).join('')).j
   {
     drawn.map((l) => (
       <Fragment>
-        {l.fills.map((p) => <path fill={p.fill} style={p.style} d={p.d} />)}
+        {l.fills.map((p) => <path class:list={{ grove: l.grove }} fill={p.fill} style={p.style} d={p.d} />)}
+        {l.caps && <path class="snowcap" d={l.caps} />}
         {l.strokes.map((st) => <path d={st.d} fill="none" style={st.style} stroke-width={st.width} stroke-linecap="round" />)}
         {l.lamps.map((g) => <path class:list={['lamp', { cool: g.cool }]} style={`--t:${g.tier}`} d={g.d} />)}
         {l.lights.map((w) => (
@@ -908,13 +953,30 @@ const looks = LOOKS.map((look) => palette.map((c) => rgba8(c[look])).join('')).j
     </g>
   </g>
 </svg>
+{/* Weather in front of the city: haze and mist near the far hills, rain or snow falling, fading out
+    above the skyline so the contact text stays clear. Hidden until the weather says otherwise */}
+<div class="weather-front" aria-hidden="true" style={`--rain-tile:${rainTile};--snow-tile:${snowTile}`}>
+  <div class="wf-haze"></div>
+  <div class="wf-mist"></div>
+  <div class="wf-fall wf-rain"><i></i><i></i></div>
+  <div class="wf-fall wf-snow"><i></i><i></i></div>
+</div>
 
 <script>
   // Amman at its real time of day: each color's four versions (data-looks) blended by how much of
   // night, dawn, day and dusk it is in Amman now (astro.ts::daylight), with the windows, the
   // lanterns, the birds and the sky's glow to match. Refreshed each minute, so a long visit sees
   // the light change.
-  import { daylight, LOOKS, mainLook, now, type Look } from '../scripts/sky/astro';
+  import { daylight, LOOKS, mainLook, now, type Daylight, type Look } from '../scripts/sky/astro';
+  import { onWeather, type Weather } from '../scripts/weather';
+
+  // Amman's weather for this half of the day (scripts/weather.ts), once it arrives
+  let weather: Weather | null = null;
+  // What the weather does to the city, by look: the air dust and fog mix in, and snow's color
+  const DUST_AIR: Record<Look, number[]> = { night: [74, 58, 44], dawn: [196, 148, 104], day: [204, 168, 120], dusk: [190, 130, 90] };
+  const FOG_AIR: Record<Look, number[]> = { night: [66, 72, 92], dawn: [206, 198, 204], day: [216, 220, 226], dusk: [196, 182, 190] };
+  // Snow at night still catches the city's light: bright against the dark houses
+  const SNOW: Record<Look, number[]> = { night: [186, 190, 214], dawn: [240, 230, 238], day: [246, 248, 252], dusk: [236, 218, 228] };
 
   // The scene's wash over the sky, [middle, low, bottom] as [r, g, b, alpha], by look
   const WASH: Record<Look, number[][]> = {
@@ -933,26 +995,84 @@ const looks = LOOKS.map((look) => palette.map((c) => rgba8(c[look])).join('')).j
     );
     const css = (c: number[], alpha = c[3] / 255) =>
       `rgb(${Math.round(c[0])} ${Math.round(c[1])} ${Math.round(c[2])} / ${alpha.toFixed(3)})`;
+    const front = scene?.querySelector<HTMLElement>('.weather-front');
+    const byLight = (table: Record<Look, number[]>, light: Daylight) =>
+      [0, 1, 2].map((j) => LOOKS.reduce((sum, k) => sum + table[k][j] * light[k], 0));
+    /**
+     * A color under the weather: overcast light is flatter and dimmer; rain darkens and deepens
+     * the stone, as wet; dust and fog mix in their air.
+     */
+    const weathered = (c: number[], light: Daylight) => {
+      const wx = weather;
+      if (!wx) return c;
+      const grey = Math.min(1, Math.max((wx.cloud - 0.35) / 0.6, wx.rain * 1.3, wx.snow * 1.2, wx.storm ? 1 : 0));
+      const dim = 1 - 0.1 * grey - 0.1 * wx.rain;
+      let rgb = c.slice(0, 3).map((v) => v * dim);
+      const avg = (rgb[0] + rgb[1] + rgb[2]) / 3;
+      const sat = wx.rain > 0 ? 0.14 : -0.15 * grey;
+      rgb = rgb.map((v) => Math.max(0, Math.min(255, v + (v - avg) * sat)));
+      const into = (target: number[], k: number) => (rgb = rgb.map((v, i) => v + (target[i] - v) * k));
+      if (wx.dust > 0) into(byLight(DUST_AIR, light), 0.24 * wx.dust);
+      if (wx.fog > 0) into(byLight(FOG_AIR, light), 0.16 * wx.fog);
+      return [...rgb, c[3]];
+    };
+    // The front layer starts just under the contact text, wherever the layout puts it
+    const words = scene?.querySelector<HTMLElement>('.contact');
+    const placeFront = () => {
+      if (front && words) front.style.top = `${words.offsetTop + words.offsetHeight + 8}px`;
+    };
+    addEventListener('resize', placeFront);
+    /** Rain, snow, haze, mist and wind in front of the city, for the weather and the hour. */
+    const showWeather = (light: Daylight) => {
+      placeFront();
+      const wx = weather;
+      const dark = light.night + 0.5 * (light.dawn + light.dusk);
+      svg.toggleAttribute('data-windy', !!wx && wx.wind >= 0.5);
+      svg.style.setProperty('--wind', (wx?.wind ?? 0).toFixed(2));
+      svg.style.setProperty('--snow', wx && wx.snow > 0 ? '1' : '0');
+      svg.style.setProperty('--snowcap', `rgb(${byLight(SNOW, light).map(Math.round).join(' ')})`);
+      if (!front) return;
+      front.toggleAttribute('data-rain', !!wx && wx.rain > 0);
+      front.toggleAttribute('data-snow', !!wx && wx.snow > 0);
+      if (!wx) return;
+      front.style.setProperty('--rain', (wx.rain * (0.8 - 0.3 * dark)).toFixed(3));
+      front.style.setProperty('--snow', (0.45 + 0.55 * wx.snow).toFixed(3));
+      const dusty = wx.dust >= wx.fog;
+      front.style.setProperty('--haze', Math.max(wx.dust, wx.fog).toFixed(3));
+      front.style.setProperty('--haze-rgb', byLight(dusty ? DUST_AIR : FOG_AIR, light).map(Math.round).join(' '));
+      // Rain and snow lean with the wind: from the east one way, from the west the other
+      const side = Math.sin((wx.windFrom * Math.PI) / 180) >= 0 ? 1 : -1;
+      front.style.setProperty('--slant', `${(side * (3 + 20 * wx.wind)).toFixed(1)}deg`);
+    };
     const paint = () => {
       const light = daylight(now());
       const w = LOOKS.map((look) => light[look]);
       const blend = (colors: number[][]) => [0, 1, 2, 3].map((j) => colors.reduce((sum, c, k) => sum + c[j] * w[k], 0));
-      palettes[0].forEach((_, i) => svg.style.setProperty(`--c${i}`, css(blend(palettes.map((p) => p[i])))));
+      palettes[0].forEach((_, i) => svg.style.setProperty(`--c${i}`, css(weathered(blend(palettes.map((p) => p[i])), light))));
+      showWeather(light);
       // Windows light up as it gets dark; people are home at dusk, and a few are still up at dawn
       svg.style.setProperty('--lamps', Math.max(light.night, 0.8 * light.dusk, 0.3 * light.dawn).toFixed(3));
       svg.style.setProperty('--lights', (1 - light.day).toFixed(3));
       svg.style.setProperty('--sun', (light.dawn + 0.5 * light.day + 0.45 * light.dusk).toFixed(3));
-      svg.style.setProperty('--birds', (1 - light.night).toFixed(3));
+      // The pigeons stay in at night, and out of rain, snow, dust or a gale
+      const grounded = !!weather && (weather.rain > 0 || weather.snow > 0 || weather.dust > 0.4 || weather.wind > 0.8);
+      svg.style.setProperty('--birds', grounded ? '0' : (1 - light.night).toFixed(3));
       // At dawn the last lights go out as the city comes into view (global.css, lights-out)
       svg.classList.toggle('at-dawn', mainLook(light) === 'dawn');
       if (!scene) return;
       scene.dataset.look = mainLook(light);
+      // The wash takes the weather too, and fades under a grey sky, where it would only tint it
+      const grey = weather ? Math.min(1, Math.max((weather.cloud - 0.35) / 0.6, weather.rain * 1.3, weather.snow * 1.2, weather.dust)) : 0;
       ['mid', 'low', 'floor'].forEach((name, i) => {
-        const c = blend(LOOKS.map((look) => WASH[look][i]));
-        scene.style.setProperty(`--wash-${name}`, css(c, c[3]));
+        const c = weathered(blend(LOOKS.map((look) => WASH[look][i])), light);
+        scene.style.setProperty(`--wash-${name}`, css(c, c[3] * (1 - 0.6 * grey)));
       });
     };
     paint();
     setInterval(paint, 60_000);
+    onWeather((w) => {
+      weather = w;
+      paint();
+    });
   }
 </script>

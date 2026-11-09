@@ -875,6 +875,9 @@ section h2 {
    ────────────────────────────────────── */
 .amman-now {
   /* The final scene owns the whole screen: with the footer, exactly one viewport */
+  position: relative;
+  /* The skyline's height, as .skyline sizes it: its own proportions, 160px to 48vh */
+  --sh: min(max(29.1667vw, 160px), 48vh);
   min-height: calc(100svh - 4.75rem);
   display: flex;
   flex-direction: column;
@@ -905,6 +908,12 @@ section h2 {
 /* Over a daylight sky the usual haze is too faint to read (data-look: Skyline.astro's script) */
 .amman-now[data-look='day'] .contact p {
   color: #e6ecf7;
+}
+
+/* Clouds may pass behind the contact text (sky/weather.ts); a soft shadow keeps it readable on
+   them without boxing it in */
+.amman-now .contact :is(h2, p) {
+  text-shadow: 0 1px 18px rgba(7, 11, 26, 0.55), 0 0 2px rgba(7, 11, 26, 0.35);
 }
 
 .skyline {
@@ -948,6 +957,165 @@ section h2 {
 /* The pigeons roost at night */
 .skyline .pigeons {
   opacity: var(--birds, 1);
+}
+
+/* ── Amman's weather (src/scripts/weather.ts, set by Skyline.astro's script) ── */
+
+/* Snow along the roofs, only when it snows, in the light of the hour */
+.skyline .snowcap {
+  fill: var(--snowcap, #f2f5fa);
+  opacity: var(--snow, 0);
+}
+
+/* In front of the city: from just under the contact text (Skyline.astro's script sets `top` to
+   where the text ends) down over the skyline, fading in from the top, so rain and snow never fall
+   behind words */
+.weather-front {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% - var(--sh) - 14vh);
+  bottom: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 40%);
+}
+
+/* Dust or fog: the air thickest around the far hills, thinner toward the nearest houses */
+.wf-haze,
+.wf-mist {
+  position: absolute;
+  inset: 0;
+  opacity: var(--haze, 0);
+}
+
+.wf-haze {
+  background: linear-gradient(
+    to top,
+    rgb(var(--haze-rgb, 210 210 210) / 0.16) 0,
+    rgb(var(--haze-rgb, 210 210 210) / 0.62) calc(var(--sh) * 0.52),
+    rgb(var(--haze-rgb, 210 210 210) / 0.42) calc(var(--sh) * 0.64),
+    rgb(var(--haze-rgb, 210 210 210) / 0) 100%
+  );
+}
+
+/* Banks of it drifting across */
+.wf-mist {
+  inset-inline-end: -100%;
+  opacity: calc(var(--haze, 0) * 0.75);
+  background:
+    radial-gradient(28% 16% at 12% 64%, rgb(var(--haze-rgb, 210 210 210) / 0.55), transparent),
+    radial-gradient(22% 12% at 38% 72%, rgb(var(--haze-rgb, 210 210 210) / 0.45), transparent),
+    radial-gradient(30% 14% at 63% 60%, rgb(var(--haze-rgb, 210 210 210) / 0.5), transparent),
+    radial-gradient(24% 13% at 88% 70%, rgb(var(--haze-rgb, 210 210 210) / 0.45), transparent);
+  animation: mist-drift 90s linear infinite;
+}
+
+@keyframes mist-drift {
+  to {
+    translate: -50% 0;
+  }
+}
+
+/* Rain and snow: repeating tiles sliding down, two depths each, leaning with the wind */
+.wf-fall {
+  position: absolute;
+  inset: -20% -25%;
+  display: none;
+  transform: rotate(var(--slant, 4deg));
+}
+
+.weather-front[data-rain] .wf-rain,
+.weather-front[data-snow] .wf-snow {
+  display: block;
+}
+
+.wf-fall i {
+  position: absolute;
+  inset: 0;
+  top: calc(-1 * var(--t));
+  background-repeat: repeat;
+  background-size: var(--t) var(--t);
+  will-change: transform;
+  animation: fall var(--d) linear infinite;
+}
+
+@keyframes fall {
+  to {
+    transform: translateY(var(--t));
+  }
+}
+
+.wf-rain {
+  opacity: var(--rain, 0);
+}
+
+.wf-rain i {
+  --t: 200px;
+  --d: 0.42s;
+  background-image: var(--rain-tile);
+  opacity: 0.75;
+}
+
+.wf-rain i + i {
+  --t: 300px;
+  --d: 0.34s;
+  opacity: 1;
+}
+
+.wf-snow {
+  opacity: var(--snow, 0);
+}
+
+.wf-snow i {
+  --t: 240px;
+  --d: 11s;
+  background-image: var(--snow-tile);
+  opacity: 0.8;
+  animation: fall var(--d) linear infinite, flutter 5s ease-in-out infinite alternate;
+}
+
+.wf-snow i + i {
+  --t: 380px;
+  --d: 7.5s;
+  opacity: 1;
+  animation-duration: var(--d), 6.5s;
+}
+
+@keyframes flutter {
+  to {
+    translate: 26px 0;
+  }
+}
+
+/* Wind: the groves sway, more the stronger it blows */
+@media (prefers-reduced-motion: no-preference) {
+  .skyline[data-windy] .grove {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: sway 2.8s ease-in-out infinite alternate;
+  }
+
+  .skyline[data-windy] .grove:nth-of-type(3n) {
+    animation-duration: 3.4s;
+    animation-delay: -1.2s;
+  }
+}
+
+@keyframes sway {
+  from {
+    transform: skewX(calc(var(--wind, 0.6) * -2.4deg));
+  }
+  to {
+    transform: skewX(calc(var(--wind, 0.6) * 1deg));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-fall i,
+  .wf-mist {
+    animation: none;
+  }
 }
 
 .skyline .pigeon {
