@@ -26,7 +26,7 @@ export type YearMonth = `${number}-${number}`;
 export const site = {
   url: 'https://ezzohamdan.github.io',
   /** Bump on every content change: feeds the sitemap, JSON-LD dateModified and the footer. */
-  updated: '2026-11-08',
+  updated: '2026-11-09',
   email: 'devezzham@gmail.com',
   cv: '/Ezzaldeen_Hamdan_AI_Engineer_CV.pdf',
   links: {
