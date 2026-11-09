@@ -202,7 +202,7 @@ export function createWeatherSky(makeCanvas: (w: number, h: number) => Canvas) {
         ctx.restore();
       }
       // Lightning in a storm: now and then a flash that lights the clouds, sometimes a bolt that
-      // comes down behind the city. Brief and far between; none for reduced motion
+      // comes down from below the text to behind the city. Brief and far between; none for reduced motion
       if (wx.storm && !o.still) {
         nextStrike -= dt;
         if (nextStrike <= 0) {
@@ -210,8 +210,9 @@ export function createWeatherSky(makeCanvas: (w: number, h: number) => Canvas) {
           flash = 1;
           bolt = [];
           if (Math.random() < 0.7) {
+            // From the clouds below the contact text down behind the city: never across the words
             let x = w * (0.15 + 0.7 * Math.random());
-            let y = horizon * 0.22;
+            let y = ceiling + 20;
             bolt.push([x, y]);
             while (y < horizon + 8) {
               y += 14 + Math.random() * 22;
