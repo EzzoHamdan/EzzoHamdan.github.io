@@ -4,8 +4,8 @@
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
 > **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 how the sky works →
 > §4 change recipes → §5 failure messages → §6 sharp edges → §7 decisions.
-> **Reflects code as of 2026-11-08** (`main`, live from that day: the galaxy journey, the owner's
-> chosen design, with Amman at its real time of day).
+> **Reflects code as of 2026-11-09** (the `amman-weather` branch: the live site on `main` plus
+> Amman's real weather in the Contact scene, §3d).
 
 **What must not break:**
 
@@ -25,6 +25,7 @@
 | Check the build (links, JSON-LD, hreflang, language rule, drafts) | `npm run check` |
 | Preview the production build | `npm run preview`, then stop it with `npx astro preview stop` |
 | See Amman at another hour (§3c) | Add `?at=HH:MM` (Amman time), e.g. <http://localhost:4321/?at=21:00> |
+| See Amman in any weather (§3d) | Add `?weather=` (`clear`, `partly`, `cloudy`, `fog`, `drizzle`, `rain`, `storm`, `snow`, `dust`, optionally `,windy`), e.g. <http://localhost:4321/?weather=snow&at=21:00> |
 
 **Limits:**
 
@@ -36,6 +37,9 @@
   (`journey.ts::JOURNEY_QUERY`); everything else gets the dome.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
 - **Hosting:** GitHub Pages serves static files only; there is no server code anywhere.
+- **One outside service:** Amman's weather comes from Open-Meteo, fetched by the visitor's browser
+  (§3d). It is the site's only request to a third party, at most twice a day per visitor, so the
+  visitor's IP address reaches Open-Meteo. If it fails, the scene simply has no weather.
 
 ## 1. Build and deploy flow
 
@@ -96,6 +100,8 @@ nothing deploys from a feature branch.
 | Sky: Milky Way | [`src/scripts/sky/milky-way.ts`](src/scripts/sky/milky-way.ts) |
 | Star, planet and shower names (both languages) | [`src/data/sky-names.ts`](src/data/sky-names.ts) |
 | Star catalog (generated, do not edit) | [`src/data/sky.json`](src/data/sky.json) ← [`scripts/make-sky-catalog.mjs`](scripts/make-sky-catalog.mjs) |
+| Amman's weather: the half-day it is for, fetching and caching, the snow rule, `?weather=` previews, the caption line | [`src/scripts/weather.ts`](src/scripts/weather.ts) |
+| Amman's weather in the sky: clouds, overcast, dust and fog tints, the veil over stars, lightning (both renderers) | [`src/scripts/sky/weather.ts`](src/scripts/sky/weather.ts) |
 | Amman at its real time of day (Temple of Hercules, King Abdullah I Mosque, the Abdali towers, the Roman Theatre, stone houses with their rooftops and balconies, trees behind them, minarets, beacons, pigeons, window lights; a color per time of day and the script that blends them, §3c) | [`src/components/Skyline.astro`](src/components/Skyline.astro) |
 | House of Wisdom diagram | [`src/components/Council.astro`](src/components/Council.astro) |
 | Blog schema and routes | [`src/content.config.ts`](src/content.config.ts), [`src/pages/blog/`](src/pages/blog/) |
@@ -454,6 +460,61 @@ never disagree about the hour. Nothing picks a look from the clock's hour direct
 <http://localhost:4321/?at=21:00>. The whole page follows it, hero caption included. The worker has
 no address of its own; the page passes it the clock's offset at init (`setClockOffset`).
 
+### 3d. Amman's weather
+
+The Contact scene also shows Amman's real weather (owner's request, 2026-11-09): clear, partly
+cloudy, cloudy, fog, drizzle, rain, thunderstorm, snow or dust, and wind on top of any of them.
+Both modes, every time of day.
+
+**Twice a day, not live** (owner's choice). The day runs 06:00–18:00 in Amman, the night
+18:00–06:00 (`weather.ts::halfDay`). Each half is summed up from Open-Meteo's hourly forecast across
+all of it (`summarize`), so an evening visitor sees the night Amman is having, and everyone in the
+same half sees the same weather. A visitor fetches once per half (`localStorage`,
+`amman-weather:<date>-<day|night>`); an open page fetches again when the half changes.
+
+| Weather | Rule over the half-day (first match wins) | Scene |
+| --- | --- | --- |
+| `storm` | A thunderstorm code (95–99) and at least 0.2 mm | Dark overcast, heavy rain, lightning now and then (a flash, sometimes a bolt behind the city) |
+| `snow` | Snowfall, or ≥ 0.5 mm in hours at **≤ 5 °C by day, ≤ 4 °C at night** (`SNOW_AT`, the owner's rule) | Pale overcast, snow falling, roofs white (`.snowcap`) |
+| `rain` | ≥ 1 mm | Grey sky, rain, darker wetter stone, no pigeons |
+| `dust` | Dust ≥ 80 μg/m³ near the ground (`DUST_UG`) | Golden-brown sky and air, the far hills fading |
+| `drizzle` | ≥ 0.2 mm, or a drizzle code | Overcast, light rain |
+| `fog` | A fog code, or visibility under 1 km | Grey-white sky, mist banks drifting across the hills |
+| `cloudy` / `partly` / `clear` | Mean cover ≥ 65% / ≥ 25% / less | Clouds over the whole sky, more and greyer as the cover grows |
+| windy (with any) | Gusts above about 50 km/h | Groves sway, rain and snow lean with the wind, clouds drift faster, pigeons stay in |
+
+```text
+Open-Meteo hourly forecast ──┐                        ┌─► worker sky: clouds, tints, veil, lightning
+  (+ dust, air-quality API)  ├─► summarize(half) ─────┼─► Skyline script: city colors, snow caps,
+halfDay(): 06–18 or 18–06 ───┘   cached per half       │     rain, snow, haze, mist, wind (.weather-front)
+                                  null on failure ─────┴─► caption: "Rain tonight, windy"
+```
+
+```mermaid
+%%{init: {'themeVariables': {'fontFamily': 'ui-monospace, SFMono-Regular, Menlo, monospace', 'lineColor': '#8b949e'}}}%%
+flowchart LR
+  half([halfDay: 06–18 or 18–06]) --> sum[summarize the hourly forecast]
+  api[(Open-Meteo forecast + dust)] --> sum
+  sum --> cache[(localStorage, per half)]
+  sum --> sky[worker sky: clouds, tints, lightning]
+  sum --> city[Skyline script: city, rain, snow, haze, wind]
+  sum --> cap[caption line]
+```
+
+Read it as: one weather per half-day feeds the sky, the city and the caption, and a failure at
+any step leaves the scene exactly as it was before weather existed.
+
+**What the weather touches:** the sky's colors (`sky/weather.ts::weatherSky`, in both renderers),
+clouds drawn across the whole sky (`createWeatherSky`, softer behind the contact text at
+`TEXT_VEIL`), the starlight and shooting stars (dimmed by `veilOf`), the city's colors
+(`Skyline.astro`, `weathered`), and a layer in front of the city for rain, snow, haze and mist
+(`.weather-front`). That layer starts just under the contact text (`placeFront`), so rain and snow
+never fall behind words. The caption gets a second line ("Rain tonight, windy"), and the footer
+credits Open-Meteo, as its CC BY 4.0 licence requires.
+
+**Preview** with `?weather=` (see the cheat sheet), alone or with `?at=`. A preview skips the
+network and the cache.
+
 ## 4. Change recipes
 
 **Update a fact (role, date, project, number):**
@@ -505,6 +566,13 @@ in both languages: the contact text must stay easy to read on every sky.
 follow the time of day by themselves. A landmark Amman floodlights at night goes between
 `kind = 'flood'` and `kind = ''`. A new gradient stop or pattern color goes through `def()` in `D`,
 never a raw `stop-color` or `fill` attribute (§6).
+
+**Change how a weather looks:** sky colors and clouds are in `src/scripts/sky/weather.ts` (`GREY_*`,
+`SNOW_*`, `DUST_*`, `FOG_LOW`, `CLOUD_*`); the city's are `DUST_AIR`, `FOG_AIR`, `SNOW` and
+`weathered` in `Skyline.astro`'s script; rain, snow, haze and wind are under "Amman's weather" in
+`global.css`. When it should happen is `weather.ts::summarize` and its thresholds. Verify with
+`?weather=<kind>&at=11:00` and `&at=21:00` on a wide window and a phone: the contact text must stay
+easy to read, and nothing may fall behind it.
 
 **Add a named star:** add `{ en, origin, ar }` to `starNames` in `src/data/sky-names.ts`, where
 `en` is the catalog's proper name. Regenerate the catalog with the commands at the top of
@@ -565,6 +633,17 @@ if the spelling differs (it's "Shedar", not "Schedar").
   made the inline SVG about 185 KB; this way it is about 200 KB (48 KB gzipped) with full detail,
   the trees and the time of day (about 3,200 night lamps, 5 KB gzipped, and the four palettes,
   4 KB).
+- ⚠ **Open-Meteo's weather codes miss Amman's snow.** Its models smooth the terrain, so they
+  reported the January 2022 snowstorm (22–30 cm in the city) as "rain at +1 °C". Snow is decided by
+  temperature instead (`SNOW_AT`: precipitation at ≤ 5 °C by day, ≤ 4 °C at night, the owner's
+  rule from experience). Tested against archived data: the 2022 storm comes out as snow by day and
+  night; a cold rainy day like 6 February 2025 (3.7–4.7 °C) also counts as snow by day. Its dust
+  model (CAMS, about 45 km) runs low too, so `DUST_UG` is set well below a real storm's levels.
+- ⚠ **Rain and snow must stay below the contact text** (the owner's long-standing rule: nothing
+  streaks behind words). `.weather-front` is positioned from where `.contact` ends, not by a fixed
+  height; a fixed height let rain reach the buttons on some screens.
+- **Every weather look degrades to none.** No network, a blocked request, a malformed answer or
+  missing hours give `null`, and the scene stays as it was. Never let a weather error throw.
 - ⚠ **Every skyline color must go through the palette** (`Skyline.astro`, "Time of day"). Fills
   drawn with `rect`, `poly`, `line` and `blob` do already; a raw `fill` or `stop-color` attribute
   in the markup stays at first light all day and night. Colors are registered (`cv`, `def`) while
@@ -703,6 +782,11 @@ if the spelling differs (it's "Shedar", not "Schedar").
   skyline read as "wacky". The city is now limestone lit gold by the first sun from the east,
   with its real landmarks drawn from the photos, under a sky that still holds the night. The
   Raghadan flag was removed the same day at the owner's request. That look is now the dawn one.
+- **Amman's weather, twice a day** (2026-11-09, owner's request): rain, snow, wind, dust and
+  clouds from real data (§3d), refreshed only at 06:00 and 18:00 so a visit tells what Amman's day
+  or night is like, not its last fifteen minutes. Clouds were first kept below the contact text
+  for contrast; the owner preferred them high and scattered over the whole sky, so they stay there,
+  dimmed behind the words, and the contact text has a soft shadow.
 - **The journey begins with the Big Bang** (2026-11-07, owner's request): the hero is the void,
   pitch black; scrolling sparks a first light that swells and bursts, so the flight home starts at
   the very beginning (§3b). It replaced the takeoff, where the hero showed Amman's real sky and
@@ -755,4 +839,5 @@ Star positions and star names come from
 is built on Hipparcos and Yale Bright Star Catalog data. The land on the globe is
 [Natural Earth](https://www.naturalearthdata.com/) (public domain), via
 [world-atlas](https://github.com/topojson/world-atlas) (ISC). Brand icons are from
-[Simple Icons](https://simpleicons.org/) (CC0).
+[Simple Icons](https://simpleicons.org/) (CC0). Amman's weather is from
+[Open-Meteo](https://open-meteo.com/) (CC BY 4.0), credited in the footer.
