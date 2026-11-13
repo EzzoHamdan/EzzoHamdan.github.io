@@ -4,8 +4,9 @@
 > <https://ezzohamdan.github.io/> (English) and <https://ezzohamdan.github.io/ar/> (Arabic).
 > **How to read it:** cheat sheet → §1 build and deploy flow → §2 code map → §3 how the sky works →
 > §4 change recipes → §5 failure messages → §6 sharp edges → §7 decisions.
-> **Reflects code as of 2026-11-09** (the `amman-weather` branch: the live site on `main` plus
-> Amman's real weather in the Contact scene, §3d).
+> **Reflects code as of 2026-11-13** (`main`, with the `even-scroll` work: an even glide through
+> every stop, a longer beginning with a passage through nebula gas, the blast imploding on the way
+> back, a lighter blast for Safari, the footer laid over the city, and a photographed Earth, §3b).
 
 **What must not break:**
 
@@ -35,6 +36,9 @@
   loads after the page has painted. Everything else is HTML and CSS.
 - **The galaxy journey** needs a window at least 900 × 560 px with motion allowed
   (`journey.ts::JOURNEY_QUERY`); everything else gets the dome.
+- **The Earth's photographs** (`src/assets/earth/`, about 350 KB) are fetched only in the galaxy
+  journey, once the reader is past the first title; until then, and if they fail, the globe is
+  the drawn map.
 - **Fonts:** fetched from Fontsource at build time, so a build needs network access.
 - **Hosting:** GitHub Pages serves static files only; there is no server code anywhere.
 - **One outside service:** Amman's weather comes from Open-Meteo, fetched by the visitor's browser
@@ -92,8 +96,10 @@ nothing deploys from a feature branch.
 | Galaxy journey, page side: stops, scroll track, plane choreography, the camera, nav and focus | [`src/scripts/journey.ts`](src/scripts/journey.ts) |
 | Galaxy journey, sky side: star field, galaxies, warp, takeoff and landing | [`src/scripts/sky/journey.ts`](src/scripts/sky/journey.ts) (same worker) |
 | Galaxy portraits (Andromeda, Triangulum, Whirlpool, Sombrero, Milky Way) and the Sun's place in the Milky Way | [`src/scripts/sky/galaxies.ts`](src/scripts/sky/galaxies.ts) |
-| The globe at the end (lit for the moment the sky starts) | [`src/scripts/sky/earth.ts`](src/scripts/sky/earth.ts) |
-| Land map for the globe (generated, do not edit) | [`src/data/earth.json`](src/data/earth.json) ← [`scripts/make-earth-map.mjs`](scripts/make-earth-map.mjs) |
+| The nebula gas after the Big Bang: clouds painted from warped noise, the sheets the camera flies through, newborn stars | [`src/scripts/sky/nebula.ts`](src/scripts/sky/nebula.ts) |
+| The globe at the end (lit for the moment the sky starts; drawn map first, photographs once fetched) | [`src/scripts/sky/earth.ts`](src/scripts/sky/earth.ts) |
+| The globe's photographs (NASA, public domain; 2048 × 1024, see Credits) | [`src/assets/earth/`](src/assets/earth/) |
+| Land map for the globe's drawn fallback (generated, do not edit) | [`src/data/earth.json`](src/data/earth.json) ← [`scripts/make-earth-map.mjs`](scripts/make-earth-map.mjs) |
 | Sky: Amman, sidereal time, Sun, planets, galactic plane, the moment shown | [`src/scripts/sky/astro.ts`](src/scripts/sky/astro.ts) |
 | Sky: catalog arrays, the camera and its lens, the projection | [`src/scripts/sky/catalog.ts`](src/scripts/sky/catalog.ts) |
 | Sky: shooting stars (one shared direction, tapered trails) | [`src/scripts/sky/meteors.ts`](src/scripts/sky/meteors.ts) |
@@ -213,7 +219,7 @@ this rule for the beginning; see below):
 | Phase | Plane | Camera |
 | --- | --- | --- |
 | **Arrive** (from 4 focal lengths away) | A content stop's parts are fixed in space beside the route (below); perspective alone grows them and carries them outward to their sides, and cards "render" in from top to bottom. Titles come straight down the middle and assemble from points of starlight. | Glides forward one `STRIDE` |
-| **Hold** (±`HOLD` = 0.2 stop) | Still: the card on the stop's side, turned 10° toward the route, the visuals on the other side. Nothing else is visible. Titles are flat and centered. | Almost still (`CREEP`; the text ignores it) |
+| **At the stop** | Flat and crisp: the card on the stop's side, turned 10° toward the route, the visuals on the other side. Nothing else is visible. Titles are flat and centered. Within `SETTLED` (5% of the way in or out) it counts as settled: clickable, no mask, letters at rest | Slows to half its average speed (`EVEN`), the text to a quarter (`TEXT_EVEN`); neither ever stops |
 | **Depart** | The parts pass out of view on their sides, nearest first, as the camera goes on. Titles rise overhead; the hero sinks away below and tilts like the ground at takeoff, over a longer first leg (`WEIGHT.hero`) | Moves on |
 
 The galaxies come **farthest first**, so the whole flight is a return to Earth (owner's request):
@@ -231,24 +237,31 @@ The galaxies come **farthest first**, so the whole flight is a return to Earth (
 Each galaxy is far behind its section's title, grows as the section is read, and is passed close
 by on the way to the next title. The caption at the bottom names it and gives the distance from
 Earth, which counts down on a log scale between places (`journey.ts::distanceAt`, units from
-millions of light-years down to km in `formatDistance`) and holds still while a stop is read.
+millions of light-years down to km in `formatDistance`), slowest at each stop.
 
-**The beginning** (`sky/genesis.ts::GENESIS`, `sky/journey.ts::drawGenesis`, owner's request,
-2026-11-07). The hero is the void, pitch black, and the first leg, from the hero to the "In
-short" title, tells how it all started, as positions along the route in stops:
+**The beginning** (`sky/genesis.ts::GENESIS`, `sky/journey.ts::drawGenesis` and `drawDust`,
+`sky/nebula.ts`, owner's request, 2026-11-07). The hero is the void, pitch black, and the first
+leg, from the hero to the "In short" title, tells how it all started. That leg is about 2.8
+screens of scroll (`WEIGHT.hero`), so 0.1 below is a little over a quarter of a screen; positions
+along the route in stops:
 
 | From | To | On screen | Page |
 | --- | --- | --- | --- |
-| 0 | 0.03 | Nothing: pure black | The hero |
-| 0.03 | 0.5 (`glow`) | A small light appears as soon as the page moves and swells, brighter and more restless, faint spikes around it | The hero departs, gone by 0.45 (`heroGone`); caption "The beginning, 13.8 billion years ago" from 0.25 |
-| 0.5 | 0.8 (`blast`) | The Big Bang: a flash from white to gold to ember red, a soft shock shell, sparks thrown out, the young universe's mottled afterglow cooling; its stars light up through it | Nothing on screen but the sky |
-| 0.5 | 0.9 (`born`) | A new universe of stars and galaxies grows out of the center to full size | "In short" gathers from 0.74 (`title`), as the flash fades, and holds from 0.8 |
+| 0 | 0.012 | Nothing: pure black | The hero |
+| 0.012 | 0.175 (`glow`) | A small light appears as soon as the page moves and swells, brighter and more restless, faint spikes around it | The hero departs from 0.031, gone by 0.157 (`hero`); caption "The beginning, 13.8 billion years ago" from 0.07 (`caption`) |
+| 0.175 | 0.279 (`bang` + `blast`) | The Big Bang: a flash from white to gold to ember red, a soft shock shell, sparks thrown out, the young universe's mottled afterglow cooling, which lingers into the gas; its stars light up through it | Nothing on screen but the sky |
+| 0.175 | 0.357 (`born`) | The new universe grows out of the center to full size | Nothing |
+| 0.221 | 0.661 (`dust`) | The gas (`nebula.ts`): eleven sheets of nebula the camera flies through, each a cloud of filaments, knots and dark dust lanes that fills the view, with no opening along the line of flight. The first condense out of the blast's haze in its own gold and ember; after them rose, magenta, violet and blue weave through each other, six or seven sheets showing at once; newborn stars inside. It has the stage to itself: no galaxy shows and the stars are dimmed to a quarter behind it | Caption "Cosmic dawn, the first stars, 13.7 billion years ago" from 0.28, as the blast ends (the first stars lit some 100 to 200 million years after the Big Bang), until 0.69 |
+| 0.554 | 0.696 (`cosmos`) | As the gas thins, the galaxies appear, the Sombrero first, and the stars return to full | Nothing |
+| 0.696 | 0.964 (`title`) | The Sombrero ahead | "In short" gathers over about three quarters of a screen, as any title does, then settles |
 
 ```text
-u  0 ─ 0.03 ── 0.2 ─────── 0.45 ─ 0.5 ──────────── 0.74 ─ 0.8 ──── 0.9 ── 1
-   void │ first light swells ────────┤ blast (flash, shell, sparks, afterglow) │
-        │      │ hero departs │ alone │      new universe grows ─────────────┤
-                                               "In short" gathers ─► holds
+u  0 ─ 0.031 ── 0.157 ─ 0.175 ──── 0.279 ──── 0.554 ── 0.661 ── 0.696 ───── 0.964 ── 1
+   void │ light swells ───┤ blast ───┤
+        │ hero departs ┤   │ universe grows ─┤ (to 0.357)
+                             │ gas: gold, ember, then rose, magenta, violet, blue woven ┤
+                                              │ Sombrero appears ─┤
+                                                                   │ "In short" gathers ┤ settles
 ```
 
 ```mermaid
@@ -257,26 +270,37 @@ flowchart LR
   hero([hero in the void]) --> light[first light swells, hero departs]
   light --> point((the light alone))
   point --> blast[blast: flash, shell, sparks, afterglow]
-  blast --> grow[new universe grows]
-  grow --> title([In short gathers, then holds])
+  blast --> dust[gas: cosmic dawn, no galaxies]
+  dust --> cosmos[Sombrero appears as the gas thins]
+  cosmos --> title([In short gathers, then settles])
 ```
 
 Read it as: the blast plays between the hero leaving and the title gathering, so no text is ever
-over the flash.
+over the flash; the gas runs on from the blast in its colors and owns its stretch, and the
+Sombrero arrives alone before the first words.
 
 **Scrolling through it is paced too** (`journey.ts::throughBang`): over the first leg (to the end
 of `BLAST_OUT`), each step of the eased camera is held to the menu jumps' pace (`paceAt`), so a
-flick plays the beginning out (about a second) instead of crossing it in a tenth of a second,
-which also kept the flash from brightening. The camera then catches up with the scroll. The
-blast once spanned 0.56 to 0.78; the owner found it too fast to read and asked for it fleshed
-out (2026-11-08). The page side reads the same `GENESIS` positions (`journey.ts::render`, the
-`genesis` branch), which is why the hero departs faster and the first title gathers later than
-any other stop.
+flick plays the beginning out instead of crossing it in a tenth of a second, which also kept the
+flash from brightening. The camera then catches up with the scroll. The blast once spanned 0.56
+to 0.78 of a one-screen leg; the owner found it too fast to read and asked for it fleshed out
+(2026-11-08). Then "In short" gathered between 0.74 and 0.8 of that leg, a twentieth of a screen
+right on the flash's heels, and read as rushed next to every other title (2026-11-13): the leg
+grew, keeping the blast's scroll length, first to two screens with a short passage of gas, then
+to 2.8 so the gas has its own shot without the Sombrero in it (owner's request, the same day).
+`PACED.GENESIS_MS` and `STILL_MS` grew with it, so the blast still takes the same time. The page
+side reads the same `GENESIS` positions (`journey.ts::render`, the `genesis` branch), which is why
+the hero departs faster than any other stop.
 
-> **Guaranteed:** the flash can only brighten at `FLASH_RISE` (3.2 a second), so scrolling back
-> and forth over it can't strobe. A menu jump through it slows down and plays it in full (§3b,
-> "Focus and links"); a jump back to the hero plays it as a calm contraction (`rewind`: no flash,
-> shock or sparks). Only a reader's fast flick skips it (`intact`, by camera speed). The light is
+> **Guaranteed:** the flash can only brighten at `FLASH_RISE` (3.2 a second) and fade at
+> `FLASH_FALL` (5), so scrolling back and forth over it can't strobe. A menu jump through it slows
+> down and plays it in full (§3b, "Focus and links"). Going back toward the hero, by a jump or by
+> scrolling up, plays it backwards as an implosion, drawn by the same code from the same `u`: the
+> shock ring closes in, the sparks fall back, the flash gathers into the point and the light
+> shrinks into the void (owner's request, 2026-11-13). Scrolling up goes `REWIND` (2.5) times the
+> forward pace everywhere but the blast, which keeps its own pace so the implosion can be seen;
+> the hero is back about a second after the reader reaches the top. Only a reader's fast flick
+> skips it (`intact`, by camera speed). The light is
 > drawn where the camera looks (`cx`, `cy`), so it lines up with the title that follows. Nothing
 > else is drawn in the void: no stars, no shooting stars, and clicks make no wishes there. The
 > journey has no hero caption (`.journey .sky-caption`); "The sky over Amman right now" belongs
@@ -289,7 +313,7 @@ any other stop.
 static page, so the hero ends with "Scroll to begin the journey" beside a line that a point of
 light falls down. It is part of the hero block, not fixed to the screen: fixed, it ran into the
 hero's stats on short windows, and inside the block it shrinks with the hero to fit. It fades out
-over the first `HOLD` of scroll (`journey.ts::cue`) and returns at the top. The dome never shows
+as the hero starts to leave (`journey.ts::cue`) and returns at the top. The dome never shows
 it; there the page scrolls like any other.
 
 **Stops as places in space** (`journey.ts::placeParts`, owner's request). A content stop is a
@@ -304,13 +328,13 @@ journey but stay in the page). Roles show two highlights per group until "Show a
 far ones and the sky leans the same way. Cards lift a little on hover. Only visuals bob; text
 never moves on its own.
 
-**Space never freezes.** While a stop holds, the camera keeps a slow drift (`sky/journey.ts`, `dz`,
+**Space never freezes.** When the reader stops scrolling, the camera keeps a slow drift (`sky/journey.ts`, `dz`,
 `dx`, `dy`, `breath`): near stars shift more than far ones and galaxies swell slightly. In the
 homecoming the planets start where they really are and then orbit (Mercury about every 24 s), and
 the marked places ripple. The hero's real sky and Amman's don't drift; they twinkle instead.
 
 **The homecoming** (`sky/journey.ts::drawHomeBack`, `drawHomeFront`). After the last stop come
-three more stops with no text (`journey.ts::HOME_STAGES`), each holding like any stop. The camera
+three more stops with no text (`journey.ts::HOME_STAGES`), each slowing like any stop. The camera
 slows to a creep and the motion becomes a powers-of-ten zoom (`ZOOM` = 14× per stage), always
 closing in on the next destination at the center of the screen:
 
@@ -318,7 +342,7 @@ closing in on the next destination at the center of the screen:
 | --- | --- |
 | `milkyway` | The Milky Way, centered on the Sun's place in the Orion Arm (`galaxies.ts::SUN_IN_MILKY_WAY`), marked with a brass ring |
 | `sun` | The Solar System, all eight planets where they really are right now (`astro.ts::solarSystem`; Uranus and Neptune from the same JPL table, too faint to be in `PLANETS`), orbits on a square-root scale so the inner planets aren't crowded into the Sun |
-| `earth` | The zoom moves from the Sun to Earth, which grows out of its dot into a globe centered on Amman, lit for this moment (`astro.ts::subsolarPoint`), so Amman is on its real side of the line between night and day, marked in brass; the caption names that side (`journey.ts::EARTH_CAPTIONS`) |
+| `earth` | The zoom moves from the Sun to Earth, which grows out of its dot into a globe centered on Amman, lit for this moment (`astro.ts::subsolarPoint`), so Amman is on its real side of the line between night and day, marked in brass; the caption names that side (`journey.ts::EARTH_CAPTIONS`). The globe is photographed (owner's request, 2026-11-13): NASA's Blue Marble by day, its Earth at Night on the dark side, city lights brightened (`earth.ts::LIGHTS_BOOST`) |
 | landing | The globe grows a little and fades into Amman's sky as the contact section and the skyline scroll in |
 
 The Solar System is turned so the Sun lies on the same side of Earth as the daylight on the globe.
@@ -328,7 +352,7 @@ scroll ─► journey.ts: routeAt(scrollY) = position in stops (u)
             │  eased (LAG 0.14 s)
             ├─► place(stop, arrive, depart): CSS perspective(F) transform, opacity, --r, --a
             │       (F = 0.72 × viewport width, the same focal length the stars use)
-            └─► "camera" message per frame: z = STRIDE·F·stairs(u), speed, u, landing, skyline y
+            └─► "camera" message per frame: z = STRIDE·F·along(u), speed, u, landing, skyline y
                      ▼
 worker: sky/journey.ts ─► background (night → space → Amman now) · tint per section
                        ─► galaxies (sprites painted once, galaxies.ts) · star field (real + generated,
@@ -344,7 +368,7 @@ flowchart LR
   scroll([scroll]) --> u[routeAt: position in stops]
   u --> eased[eased u]
   eased --> place[place: CSS 3D per stop]
-  eased --> cam[camera z = STRIDE · F · stairs u]
+  eased --> cam[camera z = STRIDE · F · along u]
   place --> planes[(text planes)]
   cam -- "camera message" --> worker[sky/journey.ts]
   worker --> sky[(stars, galaxies, warp, Amman now)]
@@ -354,11 +378,14 @@ flowchart LR
 Read it as: one eased number drives both the text planes and the stars, through one focal
 length, so text and space move as one. Nothing on the canvas depends on where the text is.
 
-> **Guaranteed:** while a stop holds, its parts are still (unless the mouse leans the camera) and
-> no other stop is visible. Cards are turned 10° toward the route and have no mask once the stop
-> holds; a part too tall for the screen is pushed back until it fits. Warp streaks
-> fade in only above 6 focal lengths of travel a second (the `warp` line), so an unhurried move
-> between stops barely streaks and nothing streaks while a stop holds.
+> **Guaranteed:** every bit of scrolling moves the scene (owner's request, 2026-11-13): the
+> camera never goes below half its average speed (`EVEN`) and the text below a quarter
+> (`TEXT_EVEN`), so no stop is a dead zone to scroll through. When the reader stops scrolling,
+> everything stops with them (eased, `LAG`), and near a stop no other stop is visible. Cards are
+> turned 10° toward the route and have no mask once settled (`SETTLED`); a part too tall for the
+> screen is pushed back until it fits. Warp streaks fade in only above 6 focal lengths of travel
+> a second (the `warp` line), so an unhurried scroll barely streaks and nothing streaks while the
+> reader reads.
 > **Prohibited:** camera pans, rolls or zooms between sections (the reason this mode exists), and
 > anything that accumulates behind text (§7).
 > **Focus and links:** a link (the header, the name) or keyboard focus aimed at a stop more than
@@ -370,14 +397,17 @@ length, so text and space move as one. Nothing on the canvas depends on where th
 > the homecoming (past the last stop): those always fly, however short, because scrolled through
 > they replayed the Big Bang or the dive home at speed. Those jumps are **paced**
 > (`journey.ts::planPace`): each part of the route gets its own time per unit (`PACED`, by
-> `paceAt`): about 1.9 s for the Big Bang, 0.9 s per homecoming stage, 0.9 s for the landing, and
-> open space crossed fast. Between them `paceAt` changes speed as under a steady push, its speed
+> `paceAt`): about 5.5 s per stop through the light and the Big Bang (whose leg is 2.8 screens),
+> 2.1 s per stop through the gas after it (`DUST_MS`: at the blast's pace it dragged while
+> everything else flew, owner's report, 2026-11-13), 0.9 s per homecoming stage, 0.9 s for the
+> landing, and open space crossed fast. A jump between the hero and "Where I've worked" takes
+> about 3.4 s either way. Between them `paceAt` changes speed as under a steady push, its speed
 > squared blending evenly with distance; a straight blend of the pace held the camera still after
-> the Big Bang and then lurched it forward. Out of the Big Bang it speeds up from `BLAST_OUT`, as
-> the flash fades. The flight then cruises at an even speed with soft ends (`cruise`) rather than
+> the Big Bang and then lurched it forward. From the end of the gas it speeds up to open space
+> (`BLAST_OUT`). The flight then cruises at an even speed with soft ends (`cruise`) rather than
 > the smootherstep, which had rushed through the middle. In a paced flight the camera
-> (`flightZ`) and the dive home skip the stops' and stages' holds, planes arrive and leave by
-> distance along the route rather than by the clock, and a flight back to the hero sends `rewind`.
+> (`flightZ`) and the dive home don't slow down at stops and stages, and planes arrive and leave
+> by distance along the route rather than by the clock.
 > A reload returns to the same place.
 
 ```text
@@ -389,9 +419,12 @@ paced jump:       time shares ∝ paceAt(u):  [Big Bang ▓▓▓▓▓][open �
 Read it as: a paced jump spends its time where there is something to watch, and never speeds up
 in the middle of it.
 
-**Tunables** (`src/scripts/journey.ts` unless noted): `HOLD` (hold width), `STRIDE` (camera travel
-and arrival distance per stop), `PACE` (scroll per stop) and `WEIGHT` (its share per kind of
-stop), `HOME_WEIGHT` (scroll per homecoming stage), `LAG` (camera easing), `CREEP`; the arrive and
+**Tunables** (`src/scripts/journey.ts` unless noted): `EVEN` and `TEXT_EVEN` (how evenly the
+camera and the text move: their slowest speed at a stop, as a share of the average), `SETTLED`,
+`STRIDE` (camera travel and arrival distance per stop), `PACE` (scroll per stop) and `WEIGHT` (its
+share per kind of stop; the hero's sets the beginning's length), `HOME_WEIGHT` (scroll per
+homecoming stage), `LAG` (camera easing); the beginning's timing is `sky/genesis.ts::GENESIS`, its
+nebula is `SHEETS`, `PALETTES`, `DEPTH` and `paint` in `sky/nebula.ts`; the arrive and
 depart paths are in `place`, a jump's duration is the `ms` line in `flyTo`, and the places'
 distances are `DISTANCE`. The parallax depths are the `--depth` and `calc(var(--px) * …)` values in
 `global.css` (the galaxy journey block). The idle drift's amplitudes are the `dz`, `dx`, `dy` lines
@@ -694,11 +727,33 @@ if the spelling differs (it's "Shedar", not "Schedar").
   commands are at its top; it can also write a PNG preview to check the coastlines). Natural Earth
   polygons wrap across the 180° meridian and Antarctica's wraps around the pole; the script
   unwraps them, and a naive fill once failed on exactly that.
+- ⚠ **The profile page's footer is inside the contact section** (`<Footer overCity />`, with
+  `role="contentinfo"` since it is no longer the page's last child), laid over the foot of the
+  skyline (`.site-footer.over-city`). It keeps to the start side and stops 17rem short of the end,
+  where the sky caption (`.sky-view`) sits; on phones, which have no caption, it centers in two
+  tight lines. `.amman-now` is exactly one viewport tall (`100svh`), which `journey.ts::layout`
+  relies on for the landing to end at the bottom of the page. Blog pages keep the plain footer.
+- ⚠ **The globe is painted twice when the photographs arrive** (`sky/earth.ts`, `usePhotos`):
+  first from the drawn map, then from the photographs, 48 rows a frame. `done` means a complete
+  picture is on the canvas and stays true while the new one is painted; `busy` means rows are
+  still being painted. The new picture replaces the old only when complete, so the swap is one
+  frame. The photographs are 2048 × 1024, about one pixel per pixel of the globe sprite at Amman.
+- ⚠ **Never fill the sky with a fresh gradient every frame.** Safari paints canvas gradients on
+  the CPU: at 2× each full-screen radial fill cost about 18 ms, and the blast's flash and shock
+  together halved the frame rate for the whole blast (measured in WebKit, 2026-11-13: 36–56 ms
+  frames, against at most 8 ms after the fix). The flash, the shock, the new universe's edge and
+  each galaxy's tint are painted once (`radialSprite`) and drawn scaled with `globalAlpha`; the
+  nebula is drawn into a layer a third of the screen's size (`nebula.ts`, `LAYER`) and stretched
+  once. Expensive one-time work is spread over frames before it is needed: the globe and the
+  nebula's clouds a band of rows per frame, the galaxy portraits one per frame from the hero
+  (`prepareGalaxies`); painted on first use, they all fell right on the bang. Verify a change
+  here by timing frames in Playwright's WebKit at `deviceScaleFactor: 2`, not only in Chrome,
+  which hid the problem (Chrome stayed at 120 fps).
 - ⚠ **After the bang the whole view grows from a point around the center** (`sky/journey.ts`, `scale`), so
   anything that fills "the screen" must fill what the screen would show at full size: the star
-  culling bounds (`drawStars`, `reach`) and the galaxy tint (`drawSpace`, `reach`). A plain
-  `fillRect(0, 0, w, h)` there showed as a shrinking rectangle. The afterglow's blotches stay
-  inside their texture for the same reason (`paintAfterglow`).
+  culling bounds (`drawStars`, `reach`). A plain `fillRect(0, 0, w, h)` there showed as a
+  shrinking rectangle. The afterglow's blotches, the nebula's clouds and the gradient sprites stay
+  inside their textures, or fade to nothing at their edges, for the same reason.
 - **The homecoming is lit for the moment the sky starts, not re-lit during a visit.** The globe
   and the planets are computed once (`sky/journey.ts`, `moment`), and the globe is painted 48 rows
   a frame from then on, so it never stalls the sky. Amman's sky and city do keep up: they refresh
@@ -774,7 +829,14 @@ if the spelling differs (it's "Shedar", not "Schedar").
   (2026-11-08). Skipping the Big Bang and the dive home in flight felt "weird" to the owner; they
   want them played. Paced flights do that. The first paced version eased the whole flight with a
   smootherstep, which paused at the start and rushed the Big Bang in the middle ("pushy"), and
-  replayed the flash backwards on the way home; `cruise` and `rewind` replaced both.
+  replayed the flash backwards on the way home; `cruise` and a calm contraction without the flash
+  (`rewind`) replaced both.
+- **The blast plays backwards again, as an implosion** (2026-11-13, owner's request): without it
+  the way back to the hero showed the light appearing out of nothing, as if a step were missing.
+  The backwards flash the owner disliked on 2026-11-08 came with the first paced flight, which
+  rushed the middle of the route; now it plays at the blast's own pace, its flash rising no faster
+  than `FLASH_RISE`. `rewind` and the faster pace that
+  skipped it were removed; scrolling up is still quicker everywhere else (`REWIND`).
 - **Farthest galaxy first** (2026-10-12, owner's request): the first order (Andromeda outward to
   the Sombrero) read as flying away from home. Distances from McQuinn et al. 2016 for the Sombrero
   (31 million light-years) and the Whirlpool (28 million).
@@ -787,6 +849,30 @@ if the spelling differs (it's "Shedar", not "Schedar").
   or night is like, not its last fifteen minutes. Clouds were first kept below the contact text
   for contrast; the owner preferred them high and scattered over the whole sky, so they stay there,
   dimmed behind the words, and the contact text has a soft shadow.
+- **An even glide, no holds** (2026-11-13, owner's request): each stop used to hold still for 40%
+  of its scroll (`HOLD` = 0.2, the camera creeping at 8%, `CREEP`), so every title, every card
+  and every role was a full stop to scroll through, then a move, then a stop. Now the camera never
+  goes below half its average speed and the text below a quarter (§3b). Do not bring back a still
+  hold; the text slowing more than the stars is what keeps a stop easy to read.
+- **A breath after the Big Bang** (2026-11-13, owner's report): "In short" gathered in a twentieth
+  of a screen right after the flash and read as rushed beside "Where I've worked", which has a
+  whole leg of open space. The first leg doubled, the blast kept its length, and a passage through
+  the young universe's gas fills the gap (§3b, the beginning). The first gas was strings of soft
+  blobs, which the owner said looked like fingers or Cheetos; it became sheets of nebula painted
+  from warped noise (`nebula.ts`). Don't go back to particles or blob chains for gas. Then the gas
+  got its own shot: longer, no galaxy in it, and starting in the blast's colors so the two read as
+  one event. Two looks were tried and turned back the same day: a strict warm-to-cool order (only
+  a few sheets visible, `FAR` 1.9), which the owner found less alive than colors weaving through
+  each other, and an opening in the middle of every cloud, which read as a tunnel showing the
+  stars beyond; the owner wanted to be inside the dust. With no opening the sheets all overlap in
+  the middle and their light burned to white, so each adds only `GAIN` of it. The caption names
+  the gas as cosmic dawn, not "the beginning", at the owner's question.
+- **The footer lies over the city** (2026-11-13, owner's request): a black band under the skyline
+  cut the final scene short. The credits now sit on a soft shade at the foot of the city, and the
+  contact text came down a little into the room it left.
+- **A photographed Earth** (2026-11-13, owner's request): the globe was land and sea from a map,
+  colored by latitude. It is now NASA's Blue Marble by day and Earth at Night after dark, with the
+  drawn map kept as the fallback.
 - **The journey begins with the Big Bang** (2026-11-07, owner's request): the hero is the void,
   pitch black; scrolling sparks a first light that swells and bursts, so the flight home starts at
   the very beginning (§3b). It replaced the takeoff, where the hero showed Amman's real sky and
@@ -838,6 +924,10 @@ Star positions and star names come from
 [d3-celestial](https://github.com/ofrohn/d3-celestial) (© 2015 Olaf Frohn, BSD-3-Clause), which
 is built on Hipparcos and Yale Bright Star Catalog data. The land on the globe is
 [Natural Earth](https://www.naturalearthdata.com/) (public domain), via
-[world-atlas](https://github.com/topojson/world-atlas) (ISC). Brand icons are from
+[world-atlas](https://github.com/topojson/world-atlas) (ISC); its photographs are NASA's
+[Blue Marble](https://visibleearth.nasa.gov/collection/1484/blue-marble) and
+[Earth at Night](https://earthobservatory.nasa.gov/features/NightLights) (public domain, NASA
+Earth Observatory), resized from the copies in the
+[three-globe](https://github.com/vasturiano/three-globe) examples (v2.41.12). Brand icons are from
 [Simple Icons](https://simpleicons.org/) (CC0). Amman's weather is from
 [Open-Meteo](https://open-meteo.com/) (CC BY 4.0), credited in the footer.
