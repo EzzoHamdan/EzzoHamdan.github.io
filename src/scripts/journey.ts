@@ -12,12 +12,14 @@
  * - Arrive: a plane appears far ahead (STRIDE focal lengths away, still in space as the camera
  *   approaches), turned like a wall on its side of the route, and swings flat into the center.
  *   Content "renders" in from top to bottom; titles assemble from scattered points of starlight.
- * - Hold: around each stop (HOLD) the plane is flat, centered, untransformed and fully crisp, and the
- *   camera all but stops. This is where reading happens.
+ * - At the stop: the plane is flat, centered and fully crisp. The camera slows to half its average
+ *   speed (EVEN) and the text to a quarter (TEXT_EVEN), but neither ever stops, so every bit of
+ *   scrolling moves the scene. Reading happens wherever the reader stops scrolling near it (within
+ *   SETTLED, it counts as settled).
  * - Depart: the plane peels off to its side (titles rise overhead) and fades as the camera moves on.
  * Content planes alternate sides; titles always come straight down the middle. Only the next plane
- * is ever visible while one holds, and every plane dims while the camera is moving fast, so a fast
- * scroll reads as a warp between stops, not a pile of flying text.
+ * is ever visible while one is read, and every plane dims while the camera is moving fast, so a
+ * fast scroll reads as a warp between stops, not a pile of flying text.
  *
  * The camera position is eased (LAG) and shared with the sky through `camera` messages, with the
  * same focal length as the CSS perspective, so stars, galaxies and text move as one space.
@@ -67,29 +69,57 @@ interface Part {
   last: string;
 }
 
-/** Half-width of the still hold around each stop, in stops. */
-const HOLD = 0.2;
+/**
+ * How evenly the camera moves between stops: this share of its travel is at a constant speed, the
+ * rest eases, so it slows to that share of its average speed at each stop and never stops (owner's
+ * request, 2026-11-13). It used to hold almost still for 40% of every stop's scroll, which made
+ * each title and each card a full stop to scroll through.
+ */
+const EVEN = 0.5;
+/**
+ * The same for the text planes, which slow down more near their stop (to a quarter of their
+ * average speed), so a reader who stops a little past one still finds it whole, while the stars
+ * behind keep moving at half speed. Nothing in space sits beside the text to show the difference.
+ */
+const TEXT_EVEN = 0.25;
+/** How far along its arrival or departure a plane still counts as settled: crisp and clickable. */
+const SETTLED = 0.05;
 /** Camera travel per stop, in focal lengths. */
 const STRIDE = 4;
 /** Scroll length of a content stop, in viewport heights. */
 const PACE = 0.95;
-/** Scroll length of each kind of stop, relative to PACE: the takeoff from the hero is unhurried. */
-const WEIGHT: Record<Kind, number> = { hero: 1.4, title: 0.65, panel: 1 };
+/**
+ * Scroll length of each kind of stop, relative to PACE. The hero's is long because the first leg
+ * holds the whole beginning (sky/genesis.ts): about 2.8 screens from the hero to "In short".
+ */
+const WEIGHT: Record<Kind, number> = { hero: 5.25, title: 0.65, panel: 1 };
 /** How long the camera takes to catch up with the scroll position, in seconds. */
 const LAG = 0.14;
 /**
  * A menu jump that crosses the beginning or the homecoming slows down through them, so the Big
  * Bang and the dive home play as they do when scrolled slowly: milliseconds of flight per unit of
  * route there, against OPEN_MS across open space. In the first leg, the hero holding before the
- * light goes at STILL_MS. LAND_MS is the whole
- * landing in Amman. The pace changes gradually between them (`paceAt`), so the camera never
- * brakes or lurches, and the flight keeps an even speed with soft ends (`cruise`, RAMP of its
- * time at each end).
+ * light goes at STILL_MS, the light and the blast at GENESIS_MS, and the gas after it at DUST_MS:
+ * quicker, close to the feel of a move between sections (owner's report, 2026-11-13: at the
+ * blast's pace the gas dragged while everything else flew). LAND_MS is the whole landing in
+ * Amman. The pace changes gradually between them (`paceAt`), so the camera never brakes or
+ * lurches, and the flight keeps an even speed with soft ends (`cruise`, RAMP of its time at each
+ * end).
  */
-const PACED = { GENESIS_MS: 1900, STILL_MS: 400, HOME_MS: 900, OPEN_MS: 150, LAND_MS: 900, BASE_MS: 500, MAX_MS: 7000, RAMP: 0.2 } as const;
+const PACED = { GENESIS_MS: 5460, STILL_MS: 1150, DUST_MS: 2100, HOME_MS: 900, OPEN_MS: 150, LAND_MS: 900, BASE_MS: 500, MAX_MS: 7000, RAMP: 0.2 } as const;
 
-/** Where a paced flight speeds up out of the Big Bang, on the route: as its flash fades, to open space. */
-const BLAST_OUT = [0.74, 2.2] as const;
+/**
+ * Where a paced flight speeds up out of the beginning, on the route: from the end of the gas to
+ * open space. The end is also where scrolling stops being paced (`throughBang`).
+ */
+const BLAST_OUT = [GENESIS.dust[1], 2.2] as const;
+/**
+ * Scrolling back through the beginning, toward the hero, goes this many times faster than forward,
+ * except through the blast, which plays backwards at its own pace: the universe falls back into
+ * the point (owner's request, 2026-11-13). At the forward pace the whole way, the hero took two
+ * seconds to return after the reader had reached the top.
+ */
+const REWIND = 2.5;
 
 /** An even cruise with soft ends: speed rises gently over RAMP of the time, holds, then eases off. */
 const cruise = (t: number) => {
@@ -100,8 +130,6 @@ const cruise = (t: number) => {
   if (t > 1 - r) return 1 - ramp(1 - t);
   return 0.5 * top * r + top * (t - r);
 };
-/** A little camera movement during a hold, so the stars answer every scroll. */
-const CREEP = 0.08;
 /**
  * After the last stop, the homecoming: three more stops with no text, each a stage of a dive
  * home (sky/journey.ts::drawHome), then the landing at dawn over Amman.
@@ -117,6 +145,7 @@ const CAPTIONS = {
     projects: 'The Triangulum galaxy',
     education: 'Andromeda, al-Sufi’s “little cloud”',
     genesis: 'The beginning',
+    dawn: 'Cosmic dawn, the first stars',
     milkyway: 'The Milky Way, our galaxy',
     sun: 'The Solar System, in the Orion Arm',
   },
@@ -126,6 +155,7 @@ const CAPTIONS = {
     projects: 'مجرة المثلث',
     education: 'المرأة المسلسلة، «اللطخة السحابية» عند الصوفي',
     genesis: 'البداية',
+    dawn: 'الفجر الكوني، النجوم الأولى',
     milkyway: 'درب التبانة، مجرّتنا',
     sun: 'المجموعة الشمسية، في ذراع الجبّار',
   },
@@ -213,11 +243,14 @@ const smooth = (a: number, b: number, x: number) => {
   const t = clamp((x - a) / (b - a));
   return t * t * (3 - 2 * t);
 };
-/** Camera progress along the route: still around each stop, gliding between them. */
-const stairs = (u: number) => {
+/** Progress through one leg (0..1 between two stops): partly even (`even`), the rest eased. */
+const ease = (f: number, even = EVEN) => even * f + (1 - even) * f * f * (3 - 2 * f);
+/** Progress through a stretch from a to b, eased like a text plane's leg: how the first title gathers. */
+const across = (a: number, b: number, x: number) => ease(clamp((x - a) / (b - a)), TEXT_EVEN);
+/** Progress along the route: slower near each stop, faster between, never still. */
+const along = (u: number, even = EVEN) => {
   const s = Math.floor(u);
-  const f = u - s;
-  return s + (1 - CREEP) * smooth(HOLD, 1 - HOLD, f) + CREEP * f;
+  return s + ease(u - s, even);
 };
 
 /**
@@ -371,16 +404,13 @@ export function startJourney() {
    * homecoming, whose motion is the zoom home rather than the flight.
    */
   function cameraZ(u: number) {
-    const st = stairs(u);
+    const st = along(u);
     const flight = Math.min(st, lastStop + 1);
     return STRIDE * F * (flight + 0.15 * Math.max(0, st - lastStop - 1));
   }
 
-  /** The camera's distance along the route for the text: like cameraZ, but still during holds. */
-  const panelZ = (u: number) => {
-    const s0 = Math.floor(u);
-    return STRIDE * F * (s0 + smooth(HOLD, 1 - HOLD, u - s0));
-  };
+  /** The camera's distance along the route for the text: slower near stops than cameraZ (TEXT_EVEN). */
+  const panelZ = (u: number) => STRIDE * F * along(u, TEXT_EVEN);
 
   // The mouse's lean moves the camera a little across; near things shift more than far ones
   let px = 0, py = 0;
@@ -389,7 +419,8 @@ export function startJourney() {
    * A content stop's parts are fixed in space beside the route, cards on the stop's side and
    * visuals on the other. Nothing slides them into place: as the camera approaches, perspective
    * alone grows them and carries them outward to their side, and as it goes on they pass out of
-   * view there, like signs along a road. At the hold the camera is still and so are they.
+   * view there, like signs along a road. When the reader stops scrolling, the camera stops and so
+   * do they.
    */
   function placeParts(s: Stop, i: number, zP: number, shown: boolean, settled: boolean, warp: number) {
     const camX = px * 0.012 * vw;
@@ -435,7 +466,7 @@ export function startJourney() {
     let opacity = 1;
     let reveal = 1;
     let letters = 1;
-    const settled = a >= 1 && b <= 0;
+    const settled = a >= 1 - SETTLED && b <= SETTLED;
     if (a <= 0 || b >= 1) {
       opacity = 0;
       reveal = 0;
@@ -489,21 +520,21 @@ export function startJourney() {
   let captionKey = '';
   function render(u: number, rate: number) {
     const s0 = Math.floor(u);
-    const t = smooth(HOLD, 1 - HOLD, u - s0);
+    const t = ease(u - s0, TEXT_EVEN);
     const warp = smooth(1.2, 3.5, rate);
     const zP = panelZ(u);
     // The first leg belongs to the beginning (sky/genesis.ts): the hero is gone before the
-    // singularity is alone, and the first title gathers only once the blast's flash has faded
+    // singularity is alone, and the first title gathers only after the blast and the dust
     const genesis = s0 === 0;
     stops.forEach((s, i) => {
       if (s.parts.length) {
-        placeParts(s, i, zP, Math.abs(u - i) < 1.5, Math.abs(u - i) <= HOLD, warp);
+        placeParts(s, i, zP, Math.abs(u - i) < 1.5, Math.abs(zP / (STRIDE * F) - i) <= SETTLED, warp);
         return;
       }
       let a = 1;
       let b = 0;
-      if (i === s0) b = genesis ? smooth(HOLD, GENESIS.heroGone, u) : t;
-      else if (i === s0 + 1) a = genesis ? smooth(GENESIS.title, 1 - HOLD, u) : t;
+      if (i === s0) b = genesis ? smooth(GENESIS.hero[0], GENESIS.hero[1], u) : t;
+      else if (i === s0 + 1) a = genesis ? across(GENESIS.title[0], GENESIS.title[1], u) : t;
       else if (i < s0) b = 1;
       else a = 0;
       place(s, a, b, warp);
@@ -541,9 +572,9 @@ export function startJourney() {
       if (i === f.to || i === f.from) {
         if (i === 0) {
           a = 1;
-          b = smooth(HOLD, GENESIS.heroGone, eased);
+          b = smooth(GENESIS.hero[0], GENESIS.hero[1], eased);
         } else if (i === 1 && eased < 1) {
-          a = smooth(GENESIS.title, 1 - HOLD, eased);
+          a = across(GENESIS.title[0], GENESIS.title[1], eased);
           b = 0;
         }
       }
@@ -555,7 +586,7 @@ export function startJourney() {
 
   // The scroll cue has done its job once the camera moves, and leaves before the hero does
   function cue(u: number) {
-    if (scrollCue) scrollCue.style.opacity = (1 - smooth(0, HOLD, u)).toFixed(3);
+    if (scrollCue) scrollCue.style.opacity = (1 - smooth(0, GENESIS.hero[0] + 0.04, u)).toFixed(3);
   }
 
   // The caption names where the camera is heading
@@ -569,8 +600,8 @@ export function startJourney() {
         ? 'home'
         : stage >= 0
           ? HOME_STAGES[Math.min(stage, HOME_STAGES.length - 1)]
-          : u > GENESIS.heroGone - 0.2 && u < GENESIS.title + 0.08
-            ? 'genesis'
+          : u > GENESIS.caption[0] && u < GENESIS.caption[2]
+            ? u < GENESIS.caption[1] ? 'genesis' : 'dawn'
             : near.kind === 'hero'
               ? ''
               : near.section;
@@ -587,18 +618,20 @@ export function startJourney() {
       if (text !== captionName.textContent) captionName.textContent = text;
       viewCaption.hidden = !text;
     }
-    // The distance from Earth counts down between places and holds while a stop is read
-    const ly = key === 'home' || key === 'genesis' ? 0 : distanceAt(u);
+    // The distance from Earth counts down between places, slowest at each stop
+    const ly = key === 'home' || key === 'genesis' || key === 'dawn' ? 0 : distanceAt(u);
     // Over Amman the second line is its weather for this half of the day
     const weather = key === 'home' ? latestWeather() : null;
     const distance =
       key === 'genesis'
         ? lang === 'ar' ? 'قبل 13.8 مليار سنة' : '13.8 billion years ago'
-        : weather
-          ? weatherLine(weather, lang)
-          : ly > 0
-            ? formatDistance(ly, lang)
-            : '';
+        : key === 'dawn'
+          ? lang === 'ar' ? 'قبل 13.7 مليار سنة' : '13.7 billion years ago'
+          : weather
+            ? weatherLine(weather, lang)
+            : ly > 0
+              ? formatDistance(ly, lang)
+              : '';
     if (distance !== captionDistance.textContent) captionDistance.textContent = distance;
   }
 
@@ -613,7 +646,7 @@ export function startJourney() {
     const b = at(Math.min(s0 + 1, lastStop + HOME_STAGES.length));
     if (!Number.isFinite(a)) return b;
     if (!Number.isFinite(b)) return a;
-    const t = smooth(HOLD, 1 - HOLD, u - s0);
+    const t = ease(u - s0);
     return 10 ** (Math.log10(a) + (Math.log10(b) - Math.log10(a)) * t);
   }
 
@@ -654,10 +687,8 @@ export function startJourney() {
       z,
       speed,
       u: eased,
-      // A paced flight zooms home without the stages' holds; the sky rewinds the beginning calmly
-      // on a flight back to the hero (no flash, no sparks)
-      home: (flight?.pace ? eased : stairs(eased)) - lastStop,
-      rewind: !!flight?.pace && flight.u1 < flight.u0,
+      // A paced flight zooms home evenly
+      home: (flight?.pace ? eased : along(eased)) - lastStop,
       end: landing(),
       horizonY: Number.isFinite(horizonFromContact) ? top + horizonFromContact : NaN,
       textY: Number.isFinite(textFromContact) ? top + textFromContact : NaN,
@@ -727,13 +758,16 @@ export function startJourney() {
    * used to cross the hero's departure, the swelling light and the whole blast in a tenth of a
    * second, too fast for the flash to even brighten. Over the first leg (to BLAST_OUT's end) each
    * step is held to that pace, and the camera catches up with the scroll once the beginning has
-   * played out. Beyond it, and across open space, scrolling is unchanged.
+   * played out. Back toward the hero it goes REWIND times faster, except through the blast, which
+   * implodes at its own pace. Beyond it, and across open space, scrolling is unchanged.
    */
   function throughBang(from: number, to: number, dt: number) {
     const top = BLAST_OUT[1];
     if (Math.min(from, to) >= top) return to;
     const start = Math.min(from, top);
-    const most = (dt * 1000) / paceAt(start);
+    const end = GENESIS.bang + GENESIS.blast;
+    const inBlast = smooth(GENESIS.bang - 0.03, GENESIS.bang + 0.01, start) * (1 - smooth(end - 0.01, end + 0.03, start));
+    const most = ((dt * 1000) / paceAt(start)) * (to < from ? REWIND - (REWIND - 1) * inBlast : 1);
     return to > from ? Math.min(to, start + most) : Math.max(to, start - most);
   }
 
@@ -741,8 +775,8 @@ export function startJourney() {
   const landingAt = (y: number) => clamp(1 - (contactTop - y) / vh);
 
   /**
-   * The camera for a paced flight: as cameraZ, but without its holds, so the flight passes stops
-   * and the homecoming's stages without pausing. The two agree at every stop.
+   * The camera for a paced flight: as cameraZ, but without slowing near each stop, so the flight
+   * passes stops and the homecoming's stages at its own pace. The two agree at every stop.
    */
   const flightZ = (u: number) => STRIDE * F * (Math.min(u, lastStop + 1) + 0.15 * Math.max(0, u - lastStop - 1));
 
@@ -750,13 +784,16 @@ export function startJourney() {
   // The camera changes speed as under a steady push: its speed squared changes evenly with the
   // distance covered (smoothly started and stopped), so it neither lingers nor lurches. Blending
   // the pace itself held the camera slow and then threw it forward, because a faster camera
-  // covers more route a second and the change compounds. Out of the Big Bang it starts speeding
-  // up as the flash fades (BLAST_OUT), while the new universe is still settling
+  // covers more route a second and the change compounds. Out of the Big Bang it quickens to the
+  // gas's pace as the flash fades, and from the end of the gas to open space (BLAST_OUT)
   const paceAt = (u: number) => {
     const sq = (ms: number) => 1 / (ms * ms);
     const blend = (a: number, b: number, k: number) => 1 / Math.sqrt(sq(a) + (sq(b) - sq(a)) * k);
-    if (u < 0.3) return blend(PACED.STILL_MS, PACED.GENESIS_MS, smooth(0.12, 0.3, u));
-    if (u < lastStop - 0.3) return blend(PACED.GENESIS_MS, PACED.OPEN_MS, smooth(BLAST_OUT[0], BLAST_OUT[1], u));
+    const end = GENESIS.bang + GENESIS.blast;
+    // The hero leaving at STILL_MS, then the beginning's own pace as the light swells and bursts
+    if (u < 0.104) return blend(PACED.STILL_MS, PACED.GENESIS_MS, smooth(0.041, 0.104, u));
+    if (u < GENESIS.dust[1]) return blend(PACED.GENESIS_MS, PACED.DUST_MS, smooth(end - 0.02, end + 0.06, u));
+    if (u < lastStop - 0.3) return blend(PACED.DUST_MS, PACED.OPEN_MS, smooth(BLAST_OUT[0], BLAST_OUT[1], u));
     return blend(PACED.OPEN_MS, PACED.HOME_MS, smooth(lastStop - 0.3, lastStop + 0.5, u));
   };
 
@@ -939,7 +976,7 @@ export function startJourney() {
   document.addEventListener('focusin', (e) => {
     const stop = (e.target as Element).closest?.('[data-stop]');
     const i = stops.findIndex((s) => s.el === stop);
-    if (i >= 0 && Math.abs(eased - i) > HOLD) flyTo(stops[i].y);
+    if (i >= 0 && Math.abs(along(eased, TEXT_EVEN) - i) > SETTLED) flyTo(stops[i].y);
   });
 
   return {

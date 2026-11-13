@@ -4,17 +4,17 @@
  *
  * Scrolling flies a camera straight ahead through space, in one direction only: forward. No pans,
  * no rolls, so fast scrolling reads as faster flight, never as a camera swinging around.
- * - The beginning (GENESIS, `drawGenesis`): the hero is pitch black, the void before anything
- *   existed. As soon as the page moves, a small light appears in it and swells while the hero
- *   leaves; then the Big Bang, and a new universe of stars and galaxies expands out of it, where
- *   the flight goes on.
+ * - The beginning (GENESIS, `drawGenesis`, `drawDust`): the hero is pitch black, the void before
+ *   anything existed. As soon as the page moves, a small light appears in it and swells while the
+ *   hero leaves; then the Big Bang, a new universe of stars and galaxies expanding out of it, and
+ *   a passage through its dust and gas before the flight goes on.
  * - The field: real stars (the sky over Amman tonight, each given a depth) and generated ones, at
  *   depths up to FAR focal lengths, recycled endlessly, so the flight never runs out of stars.
  * - Galaxies: each section flies toward one (DESTINATIONS), farthest first so the whole flight is a
  *   return home, seen far away behind its title, growing as its content is read, and passed close
  *   by on the way to the next. Its color tints the space around it.
  * - Warp: stars stretch into short streaks only while the camera is actually moving fast, which
- *   happens between stops, never while a stop holds still for reading.
+ *   happens only on a fast scroll or a jump, never while the reader stops to read.
  * - Homecoming (`drawHome`): after the last stop, a powers-of-ten dive home, one stage per leg of
  *   scroll: the Milky Way, centered on where the Sun is in it; the Solar System, planets where they
  *   really are; Earth, turned to Amman and lit for this moment, so Amman sits on its real side:
@@ -26,7 +26,10 @@
  */
 import { daylight, LOOKS, now as clockNow, night, siderealTime, solarSystem, type Daylight, type Look } from './astro';
 import { camera as skyCamera, starColor, starMag, stars } from './catalog';
-import { createGlobe } from './earth';
+import { createGlobe, loadEarthPhotos } from './earth';
+import { createNebula } from './nebula';
+import EARTH_DAY from '../../assets/earth/day.jpg?url';
+import EARTH_NIGHT from '../../assets/earth/night.jpg?url';
 import { createMeteors, DAY_METEOR_DIM, DAY_METEORS } from './meteors';
 import { CLEAR_SKY, createWeatherSky, veilOf, weatherSky, type SkyWeather } from './weather';
 import { GENESIS } from './genesis';
@@ -54,10 +57,9 @@ export type JourneyMessage =
    * The camera now: distance travelled, its speed (per second), the position along the route in
    * stops, the homecoming's progress in stages (0 at the last stop, 1 the Milky Way, 2 the Sun,
    * 3 the Earth; negative before), how far the final landing has come (0..1), and where the
-   * skyline's far hills are, and where the contact text ends (`textY`). `rewind`: a menu jump is flying back to the hero, so the beginning
-   * plays backwards as a contraction, without the blast's flash and sparks.
+   * skyline's far hills are, and where the contact text ends (`textY`).
    */
-  | { type: 'camera'; z: number; speed: number; u: number; home: number; end: number; horizonY: number; textY: number; rewind: boolean }
+  | { type: 'camera'; z: number; speed: number; u: number; home: number; end: number; horizonY: number; textY: number }
   /** Where the mouse leans the view, -1..1 each way, eased by the page. */
   | { type: 'lean'; x: number; y: number }
   | { type: 'motion'; reduced: boolean }
@@ -103,8 +105,12 @@ const ORBITER_LOOK: Record<string, { color: string; r: number }> = {
   neptune: { color: '#5b7ff0', r: 3.1 },
 };
 
-/** How fast the blast's flash may brighten, per second, so scrolling back and forth can't strobe. */
+/**
+ * How fast the blast's flash may brighten and fade, per second, so scrolling back and forth over
+ * it can't strobe.
+ */
 const FLASH_RISE = 3.2;
+const FLASH_FALL = 5;
 /** The blast's sparks: direction, speed (in half screen diagonals), width, brightness, color. */
 const SPARK_COLORS = ['#fffaf0', '#ffe2a8', '#ffb070', '#ff8a5c'];
 const SPARKS = Array.from({ length: 150 }, () => ({
@@ -180,6 +186,22 @@ function softSprite(size: number, color: string, core = 0.2): Canvas {
   return c;
 }
 
+/**
+ * A radial gradient painted once into a square sprite (stops: offset, rgb, alpha), to draw scaled
+ * instead of filling the screen with a fresh gradient every frame. Outside the circle the corners
+ * take the last stop's color, as a gradient fill pads beyond its last stop.
+ */
+function radialSprite(size: number, stops: [number, string, number][]): Canvas {
+  const c = makeCanvas(size, size);
+  const g = c.getContext('2d') as Ctx;
+  const m = size / 2;
+  const grad = g.createRadialGradient(m, m, 0, m, m, m);
+  for (const [at, color, alpha] of stops) grad.addColorStop(at, `rgba(${color},${alpha})`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  return c;
+}
+
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(',');
 
 export function createJourney(canvas: Canvas, _emit: (event: never) => void = () => {}) {
@@ -189,7 +211,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
 
   let w = 0, h = 0, dpr = 1;
   let F = 1000, stride = 4000, cx = 0, cy = 0;
-  let z = 0, speed = 0, u = 0, home = -9, end = 0, horizonY = NaN, textY = NaN, lastStop = 99, rewind = false;
+  let z = 0, speed = 0, u = 0, home = -9, end = 0, horizonY = NaN, textY = NaN, lastStop = 99;
   let reduced = false, visible = true, started = false;
   let frame = 0, last = 0, spawnDebt = 0, nextBolide = rand(8, 14);
   let drawnKey = '';
@@ -197,10 +219,18 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   let weather: SkyWeather = CLEAR_SKY;
   const weatherScene = createWeatherSky(makeCanvas);
   // The beginning: the flash as shown (it may only brighten at FLASH_RISE), the singularity's glow,
-  // and the afterglow's mottled texture, made when first needed
+  // and the afterglow's mottled texture, made when first needed; the gas after it (nebula.ts)
   let flash = 0;
   const coreSprite = softSprite(64, '255,240,222', 0.08);
   let afterglow: Canvas | undefined;
+  const nebula = createNebula(makeCanvas);
+  // The blast's glows, painted once and drawn scaled: filling the screen with a new gradient each
+  // frame cost Safari about 18 ms per glow at 2x, enough to halve the frame rate through the blast
+  const flashSprite = radialSprite(256, [[0, '255,252,246', 1], [0.22, '255,228,180', 0.85], [0.5, '255,156,90', 0.42], [0.8, '190,70,50', 0.14], [1, '120,30,40', 0]]);
+  const shockSprite = radialSprite(512, [[0.82, '255,214,170', 0], [0.955, '255,232,206', 1], [1, '255,232,206', 0]]);
+  // Clear inside, the void's color at the rim and beyond (the corners pad with it)
+  const edgeSprite = radialSprite(256, [[0.5, '3,4,12', 0], [1, '3,4,12', 1]]);
+  const tintSprites = new Map<GalaxyKind, Canvas>();
   // Amman's look right now, refreshed every half minute, and the colors and starlight it gives
   let light: Daylight = daylight(clockNow());
   let lightAt = -Infinity;
@@ -208,7 +238,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   const blend = (table: Record<Look, number[][]>) =>
     table.night.map((_, i) => [0, 1, 2].map((j) => LOOKS.reduce((sum, k) => sum + table[k][i][j] * light[k], 0)));
   // The camera never stops completely: a slow drift (depth dz, across dx and dy), so near stars
-  // shift more than far ones and galaxies swell a little, even while a stop holds still
+  // shift more than far ones and galaxies swell a little, even when the reader stops scrolling
   let dz = 0, dx = 0, dy = 0, breath = 1, clock = 0, orbitClock = 0, lastDraw = 0;
   // The mouse's lean, which moves the camera a little the same way as the drift
   let leanX = 0, leanY = 0, leaned = false;
@@ -287,6 +317,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   // this moment, so the Earth turns Amman's real side to the Sun: day, night or the line between
   const moment = clockNow();
   const globe = createGlobe(1024, moment, makeCanvas);
+  let photosAsked = false;
   const sunSprite = softSprite(64, '255,236,196', 0.12);
   let milkyWay: Canvas | undefined;
   const orbiters = (() => {
@@ -443,17 +474,23 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
   /** How much a galaxy's section is the current one, for tinting space. */
   const presence = (g: Galaxy) => smooth(g.first - 1, g.first - 0.3, u) * (1 - smooth(g.last + 0.3, g.last + 1, u));
 
-  function drawSpace(fade: number, reach = 1) {
-    // Paint at most one galaxy per frame, the first time each is needed
-    let painted = false;
+  /**
+   * Paint at most one galaxy a frame, before it is needed: every frame, even while nothing moves,
+   * so the first ones are ready while the hero is still on screen. Painted on first use, they all
+   * fell into the first frames after the bang (the void before it draws no galaxies), a stutter of
+   * about 14 ms each in Safari right as the blast began.
+   */
+  function prepareGalaxies() {
     for (const g of galaxies) {
-      const d = g.z - z;
-      if (!g.sprite && !painted && d < (FAR + 4) * F) {
+      if (!g.sprite && g.z - z < (FAR + 4) * F) {
         g.sprite = paintGalaxy(g.kind, makeCanvas);
-        painted = true;
+        drawnKey = '';
+        return;
       }
     }
-    if (painted) drawnKey = '';
+  }
+
+  function drawSpace(fade: number) {
 
     // Each region of the route has its own color, glowing around its galaxy
     for (const g of galaxies) {
@@ -463,13 +500,15 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       const x = clamp(cx + (F * (g.x - dx)) / d, 0, w);
       const y = clamp(cy + (F * (g.y - dy)) / d, 0, h);
       const r = Math.max(w, h) * 0.85;
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, `rgba(${g.tint.join(',')},${0.2 * k})`);
-      grad.addColorStop(0.5, `rgba(${g.tint.join(',')},${0.07 * k})`);
-      grad.addColorStop(1, `rgba(${g.tint.join(',')},0)`);
-      ctx.fillStyle = grad;
-      // While the view is scaled down (the beginning), cover what the screen would show at full size
-      ctx.fillRect(cx - cx * reach, cy - cy * reach, w * reach, h * reach);
+      let tint = tintSprites.get(g.kind);
+      if (!tint) {
+        const rgb = g.tint.join(',');
+        tint = radialSprite(128, [[0, rgb, 0.2], [0.5, rgb, 0.07], [1, rgb, 0]]);
+        tintSprites.set(g.kind, tint);
+      }
+      ctx.globalAlpha = k;
+      ctx.drawImage(tint, x - r, y - r, r * 2, r * 2);
+      ctx.globalAlpha = 1;
     }
 
     // Farthest first, so nearer galaxies lie over farther ones
@@ -584,7 +623,11 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     // The new universe's stars light up through the blast
     const born = banged ? 1 - (1 - smooth(GENESIS.bang + 0.1 * GENESIS.blast, GENESIS.bang + 0.85 * GENESIS.blast, u)) * intact : 1;
     const scale = 1 - (1 - (0.06 + 0.94 * grown)) * intact;
-    const genesis = first && u > GENESIS.glow[0] - 0.02 && u < GENESIS.born + 0.04;
+    // The gas after the blast has the stage to itself: no galaxies from the bang until it thins
+    // (GENESIS.cosmos), and the stars dimmed behind it, so the Sombrero appears only after it
+    const cosmos = banged ? smooth(GENESIS.cosmos[0], GENESIS.cosmos[1], u) : 1;
+    const behindGas = 1 - 0.75 * smooth(GENESIS.dust[0], GENESIS.dust[0] + 0.06, u) * (1 - cosmos);
+    const genesis = first && u > GENESIS.glow[0] - 0.02 && u < Math.max(GENESIS.born, GENESIS.dust[1]) + 0.04;
     // Landing back in Amman's air at the end, where the stars twinkle again
     const pre = smooth(0, 0.6, end);
     const landed = smooth(0.4, 1, end);
@@ -598,7 +641,15 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       drawnKey = '';
     }
     // Prepare the homecoming a little at a time, long before it is needed
-    if (!globe.done) globe.step(48);
+    if (globe.busy) globe.step();
+    // The beginning's gas and the galaxies, prepared ahead while the reader is still at the hero
+    if (!nebula.ready) nebula.step();
+    prepareGalaxies();
+    // The Earth's photographs, fetched once the journey is under way (sky/earth.ts)
+    if (!photosAsked && u > 1.5) {
+      photosAsked = true;
+      loadEarthPhotos(EARTH_DAY, EARTH_NIGHT).then((p) => p && globe.usePhotos(p));
+    }
     if (!milkyWay && u > lastStop - 5 && galaxies.every((g) => g.sprite || g.z - z > (FAR + 4) * F)) {
       milkyWay = paintGalaxy('milkyway', makeCanvas);
     }
@@ -612,7 +663,7 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     const L = homeLevel(home);
     if (L > 0.3 && L < 2.5) orbitClock += dt;
 
-    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || !globe.done || leaned || genesis || weatherScene.busy();
+    const moving = Math.abs(speed) > 1 || meteors.active() || twinkle > 0.01 || globe.busy || leaned || genesis || weatherScene.busy();
     leaned = false;
     const key = `${z.toFixed(1)}|${speed.toFixed(0)}|${home.toFixed(4)}|${end.toFixed(4)}|${w}|${h}`;
     if (drift < 0.01 && !moving && key === drawnKey) return;
@@ -654,11 +705,11 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       ctx.translate(-cx, -cy);
     }
     // Galaxies and their color dim in a fast flight (a jump), so they never flash past
-    drawSpace(born * (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))), 1 / scale);
+    drawSpace(born * cosmos * (1 - pre) * (1 - 0.75 * smooth(6 * F, 20 * F, Math.abs(speed))));
     // Home fades into Amman's sky as the city comes into view; by day the stars go with it
     const homeFade = 1 - smooth(0.05, 0.45, end);
     drawHomeBack(L, homeFade);
-    drawStars(now / 1000, born * (1 - (1 - starlight) * landed) * (1 - veil), twinkle, 1 / scale);
+    drawStars(now / 1000, born * behindGas * (1 - (1 - starlight) * landed) * (1 - veil), twinkle, 1 / scale);
     drawHomeFront(L, homeFade);
     if (scaled) ctx.restore();
 
@@ -684,8 +735,21 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
       meteors.draw(ctx, (DAY_METEOR_DIM + (1 - DAY_METEOR_DIM) * dark) * (1 - veil));
     }
     weatherScene.draw(ctx, { w, h, horizon: horizonY, text: textY, weather, light, alpha: landed, dt, still: reduced });
-    if (genesis) drawGenesis(0, blast, scale, dt, intact);
-    else flash = 0;
+    if (genesis) {
+      drawDust(intact);
+      drawGenesis(0, blast, scale, dt, intact);
+    } else flash = 0;
+  }
+
+  /** The young universe's gas (GENESIS.dust; nebula.ts), thinning out before the first title. */
+  function drawDust(strength: number) {
+    const [d0, d1] = GENESIS.dust;
+    nebula.draw(ctx, {
+      w, h, cx, cy, F, dx, dy,
+      k: (u - d0) / (d1 - d0),
+      amount: smooth(d0, d0 + 0.07, u) * (1 - smooth(d1 - 0.12, d1, u)) * strength,
+      turn: 0.012 * clock,
+    });
   }
 
   /**
@@ -698,7 +762,8 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     ctx.globalCompositeOperation = 'lighter';
     // The afterglow: the young universe still glowing as it cools, mottled like the cosmic
     // microwave background, growing with everything else
-    const embers = smooth(0.12, 0.3, blast) * (1 - smooth(0.4, 0.62, blast)) * 0.3 * strength;
+    // It lingers into the gas (GENESIS.dust), whose first clouds take its colors over
+    const embers = smooth(0.12, 0.3, blast) * (1 - smooth(0.5, 0.95, blast)) * 0.3 * strength;
     if (embers > 0.01) {
       afterglow ??= paintAfterglow();
       const size = reach * 1.3 * scale;
@@ -711,11 +776,18 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     // The edge: the new universe reaching out, which also hides where the shrunken star field ends
     const edge = reach * (0.06 + 1.3 * scale);
     if (blast > 0 && edge < reach * 1.2) {
-      const dark = ctx.createRadialGradient(cx, cy, edge * 0.5, cx, cy, Math.max(edge, 1));
-      dark.addColorStop(0, 'rgba(3,4,12,0)');
-      dark.addColorStop(1, `rgba(3,4,12,${strength})`);
-      ctx.fillStyle = dark;
-      ctx.fillRect(0, 0, w, h);
+      const e = Math.max(edge, 1);
+      ctx.globalAlpha = strength;
+      ctx.drawImage(edgeSprite, cx - e, cy - e, e * 2, e * 2);
+      // Beyond the sprite, the void
+      ctx.fillStyle = 'rgb(3,4,12)';
+      const top = Math.max(0, cy - e);
+      const bottom = Math.min(h, cy + e);
+      if (top > 0) ctx.fillRect(0, 0, w, top);
+      if (bottom < h) ctx.fillRect(0, bottom, w, h - bottom);
+      if (cx - e > 0) ctx.fillRect(0, top, cx - e, bottom - top);
+      if (cx + e < w) ctx.fillRect(cx + e, top, w - cx - e, bottom - top);
+      ctx.globalAlpha = 1;
     }
 
     ctx.globalCompositeOperation = 'lighter';
@@ -749,34 +821,25 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
     }
 
     // The blast: a flash from the point, white to gold to ember red, and a shock ring racing out.
-    // The flash may only brighten at FLASH_RISE a second, however fast the scroll
-    // Rewound (a jump back to the hero), the universe only contracts into the light: no flash
-    const burst = rewind ? 0 : strength;
+    // The flash may only brighten at FLASH_RISE a second, however fast the scroll. Played
+    // backwards (toward the hero) it implodes: the ring closes in, the sparks fall back and the
+    // light gathers into the point
+    const burst = strength;
     const target = blast > 0 ? smooth(0, 0.1, blast) * (1 - smooth(0.1, 1, blast)) * burst : 0;
-    flash = target > flash ? Math.min(target, flash + dt * FLASH_RISE) : target;
+    flash = target > flash ? Math.min(target, flash + dt * FLASH_RISE) : Math.max(target, flash - dt * FLASH_FALL);
     if (flash > 0.005) {
       const R = reach * (0.04 + 1.25 * (1 - (1 - blast) ** 3));
-      const bloom = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
-      bloom.addColorStop(0, `rgba(255,252,246,${flash})`);
-      bloom.addColorStop(0.22, `rgba(255,228,180,${0.85 * flash})`);
-      bloom.addColorStop(0.5, `rgba(255,156,90,${0.42 * flash})`);
-      bloom.addColorStop(0.8, `rgba(190,70,50,${0.14 * flash})`);
-      bloom.addColorStop(1, 'rgba(120,30,40,0)');
+      ctx.globalAlpha = Math.min(1, flash);
+      ctx.drawImage(flashSprite, cx - R, cy - R, R * 2, R * 2);
       ctx.globalAlpha = 1;
-      ctx.fillStyle = bloom;
-      ctx.fillRect(0, 0, w, h);
     }
     // The shock: a soft shell of light racing out ahead of the flash
     const shock = blast > 0 ? 0.4 * (1 - blast) * smooth(0, 0.04, blast) * Math.min(1, flash / Math.max(target, 0.01)) * burst : 0;
     if (shock > 0.01) {
       const r = reach * 1.5 * (1 - (1 - blast) ** 2);
-      const shell = ctx.createRadialGradient(cx, cy, r * 0.82, cx, cy, r);
-      shell.addColorStop(0, 'rgba(255,214,170,0)');
-      shell.addColorStop(0.75, `rgba(255,232,206,${shock})`);
-      shell.addColorStop(1, 'rgba(255,232,206,0)');
+      ctx.globalAlpha = Math.min(1, shock);
+      ctx.drawImage(shockSprite, cx - r, cy - r, r * 2, r * 2);
       ctx.globalAlpha = 1;
-      ctx.fillStyle = shell;
-      ctx.fillRect(0, 0, w, h);
     }
     // Sparks: matter thrown out of the point, slowing as space grows, gone before the first title
     // gathers (sparks are the one streak here, and never behind text)
@@ -874,7 +937,6 @@ export function createJourney(canvas: Canvas, _emit: (event: never) => void = ()
         case 'camera':
           z = msg.z;
           speed = msg.speed;
-          rewind = msg.rewind;
           u = msg.u;
           home = msg.home;
           end = msg.end;

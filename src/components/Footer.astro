@@ -6,13 +6,19 @@ interface Props {
   lang: Lang;
   /** Credit the weather data (CC BY 4.0) on pages that show Amman's weather. */
   weather?: boolean;
+  /**
+   * Lie over the foot of Amman's skyline instead of in a band of its own (global.css,
+   * `.site-footer.over-city`). It is then placed inside the contact section, so it says it is the
+   * page's footer with an explicit role.
+   */
+  overCity?: boolean;
 }
 
-const { lang, weather = false } = Astro.props;
+const { lang, weather = false, overCity = false } = Astro.props;
 const year = site.updated.slice(0, 4);
 ---
 
-<footer class="site-footer">
+<footer class:list={['site-footer', { 'over-city': overCity }]} role={overCity ? 'contentinfo' : undefined}>
   <span>© {year} {person.name[lang]}</span>
   <span>{ui[lang].updated}: <time datetime={site.updated}>{formatDate(site.updated, lang)}</time></span>
   {

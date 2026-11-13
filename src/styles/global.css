@@ -874,11 +874,11 @@ section h2 {
    Contact: Amman at its real time of day
    ────────────────────────────────────── */
 .amman-now {
-  /* The final scene owns the whole screen: with the footer, exactly one viewport */
+  /* The final scene owns the whole screen, exactly one viewport; the footer lies over its foot */
   position: relative;
   /* The skyline's height, as .skyline sizes it: its own proportions, 160px to 48vh */
   --sh: min(max(29.1667vw, 160px), 48vh);
-  min-height: calc(100svh - 4.75rem);
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -894,8 +894,11 @@ section h2 {
 }
 
 .contact {
+  /* Centered in the sky the fixed header leaves visible, a little nearer the city than the middle
+     (owner's choice, 2026-11-13, once the footer no longer took room under the city) */
   margin-block: auto;
-  padding-bottom: clamp(3rem, 8vw, 6rem);
+  padding-top: var(--header, 4.75rem);
+  padding-bottom: clamp(2.5rem, 6vw, 5rem);
 }
 
 .contact p {
@@ -1206,6 +1209,48 @@ section h2 {
   font-size: var(--tiny);
   color: var(--haze);
   background: var(--ground);
+}
+
+/* On the profile page the footer lies over the foot of Amman's skyline, inside the contact
+   section, instead of in a black band under the city (owner's request, 2026-11-13). A soft shade
+   rising from the street keeps its small text readable over the houses. It keeps to the start side
+   and stops short of the end, where the sky caption sits (.sky-view), so the two never meet. */
+.site-footer.over-city {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 2;
+  justify-content: flex-start;
+  gap: 0.35rem 1.75rem;
+  padding-block: 4.5rem 1.6rem;
+  padding-inline: var(--gutter) calc(var(--gutter) + 17rem);
+  color: #c9d1e3;
+  background: linear-gradient(to top, rgba(4, 6, 13, 0.78), rgba(4, 6, 13, 0.5) 45%, rgba(4, 6, 13, 0));
+  text-shadow: 0 1px 6px rgba(4, 6, 13, 0.9);
+  pointer-events: none;
+}
+
+.site-footer.over-city > * {
+  pointer-events: auto;
+}
+
+.site-footer.over-city a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(201, 209, 227, 0.4);
+  text-underline-offset: 0.2em;
+}
+
+/* Phones have no sky caption in the corner, so the footer centers again; and their skyline is
+   short, so the footer packs into two tight lines along the street, below the landmarks */
+@media (max-width: 720px) {
+  .site-footer.over-city {
+    justify-content: center;
+    gap: 0.1rem 1rem;
+    padding-block: 2.25rem 0.7rem;
+    padding-inline: var(--gutter);
+    font-size: 0.72rem;
+  }
 }
 
 /* ──────────────────────────────────────
